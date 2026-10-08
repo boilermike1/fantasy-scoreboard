@@ -17,14 +17,23 @@ run.sh            start the web server
 The public scoreboard runs at **https://fantasyscoreboard.mikemendel.com** (Fly.io app
 `fantasy-scoreboard`, Chicago region, idles when nobody is on it).
 
-To publish a code change:
+Code lives at **https://github.com/boilermike1/fantasy-scoreboard** (private). Pushing to `main`
+deploys the site automatically via GitHub Actions (`.github/workflows/deploy.yml`), using a Fly deploy
+token stored as the repo secret `FLY_API_TOKEN`.
+
+To publish a change:
 
 ```bash
-cd "/Users/Owner/Documents/Claude/Claude Code Projects/DFS" && fly deploy
+cd "/Users/Owner/Documents/Claude/Claude Code Projects/DFS" && git add -A && git commit -m "what changed" && git push
 ```
+
+Watch it with `gh run list` or `gh run watch`. `fly deploy` still works for a manual push.
 
 Do **not** run `fly launch` again — the app already exists, and re-running it rewrites `fly.toml`
 and can create a duplicate app.
+
+`.gitignore` keeps `data/` (site password, ETR projections) and every CSV out of the repo; the
+`.dockerignore` does the same for what reaches the server.
 
 Useful checks: `fly status`, `fly logs`, `fly certs check fantasyscoreboard.mikemendel.com`.
 League settings live in Fly secrets (`fly secrets list`), not in `data/config.json`.
