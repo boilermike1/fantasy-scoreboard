@@ -61,6 +61,7 @@ SCORING = {
     "ffz": _system("Fan Free Zone", offense={"pass_yd": 0.05, "pass_td": 6}, bonuses=False),
 }
 DEFAULT_SCORING = "dk"
+BASE_KEYS = ("dk", "ppr", "ffz")
 _stats_cache = {}            # (season, week) -> (fetched_at, payload)
 _sched_cache = {}            # season -> (fetched_at, payload)
 SCHED_TTL = 60               # game status changes during the day
@@ -209,7 +210,7 @@ def _statline(s, pos):
 
 
 def leaderboard(season=None, week=None, top=50, scoring=DEFAULT_SCORING, owners=None,
-                teams=None, injuries=None, salaries=None):
+                teams=None, injuries=None, salaries=None, scoring_keys=None):
     """Top scorers by position for one NFL week (Thu-Mon), or season to date.
 
     Pass week="season" for season-to-date totals.
@@ -281,7 +282,8 @@ def leaderboard(season=None, week=None, top=50, scoring=DEFAULT_SCORING, owners=
         "current_week": state["week"],
         "scoring": scoring,
         "scoring_label": (SCORING.get(scoring) or SCORING[DEFAULT_SCORING])["label"],
-        "scoring_options": [{"key": k, "label": v["label"]} for k, v in SCORING.items()],
+        "scoring_options": [{"key": k, "label": SCORING[k]["label"]}
+                            for k in (scoring_keys or list(SCORING)) if k in SCORING],
         "live_games": sum(1 for g in games if g.get("status") == "in_game"),
         "upcoming_games": sum(1 for g in games if g.get("status") == "pre_game"),
         "positions": POSITIONS,

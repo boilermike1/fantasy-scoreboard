@@ -178,3 +178,21 @@ padding:1px 4px;margin-left:6px;vertical-align:1px}
 .salbar span{display:block;height:100%;background:var(--green)}
 
 .autonote{font-size:11px;color:var(--muted);margin-left:-6px}
+
+/* settings */
+#settings.panel{padding:16px}
+.settings-pane{max-width:900px}
+.setcard{margin-bottom:14px}
+.setbody{padding:14px}
+.hint2{color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 12px}
+.setbody .inline{margin-top:0}
+.setbody input[type=text]{max-width:280px}
+.leaguelist{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.leaguerow{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);
+border-radius:8px;padding:8px 12px;font-size:13px}
+.leaguerow .lname{flex:1;font-weight:600}
+.leaguerow .lmeta{color:var(--muted);font-size:11px}
+.leaguerow select{width:auto;max-width:200px;padding:4px 6px;font-size:12px}
+.gamelist{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
+.gamechip{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:3px 8px;
+font-size:11px;color:var(--muted)}

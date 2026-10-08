@@ -12,6 +12,7 @@
   <nav>
     <button class="tab active" data-tab="live">Live</button>
     <button class="tab" data-tab="scoreboard">Scoreboard</button>
+    <button class="tab" data-tab="settings">Settings</button>
     <button class="tab" data-tab="optimizer">Main Slate</button>
     <button class="tab" data-tab="showdown">Showdown</button>
   </nav>
@@ -124,6 +125,42 @@ Jameson Williams
     <div id="sbError"></div>
     <div id="sbGames" class="games"></div>
     <div id="sbDetail" class="hidden"></div>
+  </section>
+</main>
+
+<main id="settings" class="panel">
+  <section class="results-pane wide settings-pane">
+
+    <div class="card setcard">
+      <div class="head"><span class="title">Sleeper leagues</span></div>
+      <div class="setbody">
+        <p class="hint2">Enter your Sleeper username to load your leagues, then tick the ones you
+           want in the Scoring menu. Stored in this browser only — other people see their own.</p>
+        <div class="inline">
+          <input type="text" id="setSleeperUser" placeholder="Sleeper username" autocomplete="off">
+          <button id="setSleeperLoad" class="small">Load leagues</button>
+          <button id="setSleeperClear" class="small ghost">Forget</button>
+        </div>
+        <div id="setSleeperStatus" class="status muted"></div>
+        <div id="setLeagues" class="leaguelist"></div>
+      </div>
+    </div>
+
+    <div class="card setcard">
+      <div class="head"><span class="title">DraftKings salaries</span></div>
+      <div class="setbody">
+        <p class="hint2">Upload the salary file from a DraftKings contest
+           (<em>Export to CSV</em> on the player list). Public DraftKings data — it turns on the
+           salary column and the Optimal lineup. Shared by everyone using this site.</p>
+        <div class="inline">
+          <label class="filebtn small">Upload DKSalaries.csv<input type="file" id="setSalFile" accept=".csv"></label>
+          <button id="setSalClear" class="small ghost">Remove</button>
+        </div>
+        <div id="setSalStatus" class="status muted"></div>
+        <div id="setSalGames" class="gamelist"></div>
+      </div>
+    </div>
+
   </section>
 </main>
 

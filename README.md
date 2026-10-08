@@ -193,6 +193,25 @@ fetched in parallel and cached 2 minutes.
 once the game is under way. Scoreless defenses also stay on the board while their game is live, since
 0 points for a defense on the field is real information.
 
+### Settings tab
+
+Per-visitor, stored in that browser only (so two people using the site at once don't affect each other):
+
+- **Sleeper leagues** — enter a Sleeper username, tick which leagues appear in the Scoring menu, and
+  pick your team in each. Scoring keys are `league:<league_id>`; a visitor's leagues are passed to the
+  API per request, and the Scoring menu only ever lists the base systems plus that visitor's own.
+- `SLEEPER_LEAGUE_ID` / `SLEEPER_USER_ID` remain the default for a visitor who hasn't chosen anything.
+
+Server-side and shared by everyone:
+
+- **DraftKings salaries** — upload the CSV from a DK contest's player list (*Export to CSV*). This is
+  public DraftKings data, unlike ETR projections, so it works on the public site: it turns on the
+  salary column and the Optimal lineup. `core/dksalaries.py` parses both classic and showdown exports
+  and reads kickoff times out of the `Game Info` column.
+
+Salary precedence: an uploaded DK file wins when it covers the slate; ETR files are the fallback and
+only on the private site (`allow_etr`).
+
 ### Salaries and the optimal lineup
 
 DraftKings has **no public salary API**, so salaries come from the projection files you already upload:

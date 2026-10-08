@@ -101,7 +101,8 @@ def get_scoreboard(season=None, week=None):
     games = sorted(games, key=lambda g: (STATE_ORDER.get(g["state"], 3), g["start"]))
     return {
         "season": season, "week": week, "current_week": state["week"],
-        "scoring_options": [{"key": k, "label": v["label"]} for k, v in SCORING.items()],
+        "scoring_options": [{"key": k, "label": SCORING[k]["label"]}
+                            for k in SCORING if not k.startswith("league:")],
         "games": games,
         "live_games": sum(1 for g in games if g["state"] == "in"),
         "upcoming_games": sum(1 for g in games if g["state"] == "pre"),

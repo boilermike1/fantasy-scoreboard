@@ -16,7 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from core.loader import load_projections, load_top_plays, parse_paste_block, match_names
 from core.optimizer import Optimizer, OptimizeError, lineups_to_upload_rows, settings_from_dict
 from core.analysis import value_report
-from core.live import leaderboard as live_leaderboard, get_state as live_state
+from core.live import (leaderboard as live_leaderboard, get_state as live_state,
+                       BASE_KEYS as live_base_keys)
 from core.scoreboard import get_scoreboard, game_detail, week_slates, injuries as espn_injuries
 from core import sleeper as sleeper_league
 from core import salaries as dk_salaries
@@ -91,6 +92,7 @@ app = FastAPI(title="DFS Tools")
 # paid content that must never be served from the public site.
 PRIVATE_PREFIXES = ("/api/state", "/api/upload", "/api/optimize", "/api/export",
                     "/api/picks", "/api/top_plays", "/api/showdown")
+# /api/settings/* stays open on the public site: DK salary exports are public data
 
 
 @app.middleware("http")
@@ -364,11 +366,21 @@ def export_showdown(body: dict):
 # ---------------------------------------------------------------- live ----
 @app.get("/api/live")
 def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk",
-         my_team: str = None, slate: str = "all", optimal: bool = False):
+         my_team: str = None, slate: str = "all", optimal: bool = False,
+         leagues: str = None):
     """Top scorers by position for one NFL week (Thu-Mon), or week="season" for season to date."""
     try:
-        sleeper_league.ensure_registered()
-        owners = sleeper_league.ownership(my_team) if scoring == sleeper_league.KEY else None
+        # register whichever leagues this visitor picked (falling back to the env default)
+        # leagues=None means "visitor has no settings yet" -> show the default league.
+        # leagues="" means "visitor deliberately chose none" -> show no leagues.
+        if leagues is None:
+            wanted = [x for x in [sleeper_league.default_ids()[0]] if x]
+        else:
+            wanted = [x.strip() for x in leagues.split(",") if x.strip()]
+        sleeper_league.register(wanted)
+
+        league_id = sleeper_league.league_id_from_key(scoring)
+        owners = sleeper_league.ownership(league_id, my_team) if league_id else None
 
         season_mode = str(week).lower() == "season"
         slates, teams, active = [], None, "all"
@@ -388,12 +400,15 @@ def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk
         # DraftKings salaries only, and only from the file matching this slate
         single_game = active.startswith("game:")
         # salaries come from paid ETR files, so the public site never serves them
-        table = (None if PUBLIC_MODE or scoring != "dk"
-                 else dk_salaries.for_slate(sorted(teams) if teams else None))
+        # DK's own export is public data and fine everywhere; ETR files are private-only
+        table = (dk_salaries.for_slate(sorted(teams) if teams else None, allow_etr=not PUBLIC_MODE)
+                 if scoring == "dk" else None)
         showdown_mode = bool(table and table.get("showdown") and single_game)
 
         depth = max(top, 500) if optimal else top
-        out = live_leaderboard(season, week, depth, scoring, owners, teams, hurt, table)
+        visible_keys = list(live_base_keys) + [sleeper_league.scoring_key(x) for x in wanted]
+        out = live_leaderboard(season, week, depth, scoring, owners, teams, hurt, table,
+                               scoring_keys=visible_keys)
 
         opt = None
         if optimal:
@@ -433,24 +448,88 @@ def live_state_endpoint():
 def scoreboard(season: str = None, week: int = None):
     """Every game for the week, in-progress first and finals last."""
     try:
-        sleeper_league.ensure_registered()
         return get_scoreboard(season, week)
     except Exception as e:
         raise HTTPException(502, f"Could not load the scoreboard: {e}")
 
 
 @app.get("/api/boxscore")
-def boxscore(away: str, home: str, season: str = None, week: int = None, scoring: str = "dk", my_team: str = None):
+def boxscore(away: str, home: str, season: str = None, week: int = None, scoring: str = "dk",
+             my_team: str = None, leagues: str = None):
     """Fantasy box score for one game: skill players and DST, both teams."""
     try:
-        sleeper_league.ensure_registered()
-        owners = sleeper_league.ownership(my_team) if scoring == sleeper_league.KEY else None
+        # register whichever leagues this visitor picked (falling back to the env default)
+        # leagues=None means "visitor has no settings yet" -> show the default league.
+        # leagues="" means "visitor deliberately chose none" -> show no leagues.
+        if leagues is None:
+            wanted = [x for x in [sleeper_league.default_ids()[0]] if x]
+        else:
+            wanted = [x.strip() for x in leagues.split(",") if x.strip()]
+        sleeper_league.register(wanted)
+
+        league_id = sleeper_league.league_id_from_key(scoring)
+        owners = sleeper_league.ownership(league_id, my_team) if league_id else None
         return game_detail(season, week, away, home, scoring, owners)
     except Exception as e:
         raise HTTPException(502, f"Could not load the box score: {e}")
 
 
+@app.get("/api/sleeper/user")
+def sleeper_user(who: str):
+    """Look up a Sleeper account by username or id, and list its NFL leagues."""
+    user = sleeper_league.resolve_user(who)
+    if not user or not user.get("user_id"):
+        raise HTTPException(404, f"No Sleeper account found for '{who}'.")
+    return {"user_id": user["user_id"], "username": user.get("username"),
+            "display_name": user.get("display_name"),
+            "leagues": sleeper_league.user_leagues(user["user_id"])}
+
+
 @app.get("/api/sleeper/teams")
-def sleeper_teams():
-    """Teams in the configured Sleeper league, for the "my team" picker."""
-    return sleeper_league.teams()
+def sleeper_teams(league_id: str = None):
+    """Teams in one league, for the "my team" picker."""
+    lid = league_id or sleeper_league.default_ids()[0]
+    if not lid:
+        return {"teams": [], "default": ""}
+    return {"teams": sleeper_league.teams(lid), "default": sleeper_league.default_ids()[1]}
+
+
+@app.get("/api/settings")
+def settings_state():
+    """What the server holds that every visitor shares — currently just the salary file."""
+    dk = dk_salaries.dk_salaries()
+    return {
+        "salaries": None if not dk else {
+            "source": dk.get("source", "DraftKings"), "players": dk["count"],
+            "teams": sorted(dk["teams"]), "games": dk["games"], "showdown": dk["showdown"],
+            "uploaded_at": _meta().get("dk_salaries", {}).get("uploaded_at"),
+            "filename": _meta().get("dk_salaries", {}).get("filename"),
+        },
+        "default_league": sleeper_league.default_ids()[0],
+    }
+
+
+@app.post("/api/settings/salaries")
+async def upload_dk_salaries(file: UploadFile = File(...)):
+    """Upload DraftKings' public salary export. Shared by everyone using the site."""
+    raw = await file.read()
+    try:
+        from core.dksalaries import load_dk_salaries
+        parsed = load_dk_salaries(raw)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    (UPLOADS / "dk_salaries.csv").write_bytes(raw)
+    _save_meta(dk_salaries={"filename": file.filename,
+                            "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
+                            "players": parsed["count"]})
+    return {"ok": True, "players": parsed["count"], "teams": sorted(parsed["teams"]),
+            "games": len(parsed["games"]), "showdown": parsed["showdown"]}
+
+
+@app.delete("/api/settings/salaries")
+def clear_dk_salaries():
+    path = UPLOADS / "dk_salaries.csv"
+    if path.exists():
+        path.unlink()
+    _save_meta(dk_salaries=None)
+    return {"ok": True}

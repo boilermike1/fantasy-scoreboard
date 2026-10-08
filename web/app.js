@@ -400,7 +400,9 @@ async function loadLive() {
     const scoring = $("liveScoring").value || prefGet("live.scoring", "dk");
     await syncTeamPickers(scoring);
     const qs = new URLSearchParams({ scoring });
-    if (scoring === "sleeper" && myTeam()) qs.set("my_team", myTeam());
+    qs.set("leagues", leagueParam());
+    const lid = scoring.startsWith("league:") ? scoring.slice(7) : "";
+    if (lid && myTeamFor(lid)) qs.set("my_team", myTeamFor(lid));
     if (wk) qs.set("week", wk);
     if ($("liveSlate").value) qs.set("slate", $("liveSlate").value);
     if (prefGet("live.optimal", false)) qs.set("optimal", "true");
@@ -408,13 +410,14 @@ async function loadLive() {
     liveData = r;
     $("liveError").innerHTML = "";
 
-    if (!$("liveScoring").options.length) {
-      r.scoring_options.forEach((o) => {
-        const el = document.createElement("option");
-        el.value = o.key; el.textContent = o.label;
-        $("liveScoring").appendChild(el);
-      });
-      $("liveScoring").value = r.scoring;
+    // rebuild when the set of systems changes (leagues added or removed in Settings)
+    const sig = r.scoring_options.map((o) => o.key).join("|");
+    if ($("liveScoring").dataset.sig !== sig) {
+      $("liveScoring").dataset.sig = sig;
+      const want = prefGet("live.scoring", "dk");
+      $("liveScoring").innerHTML = r.scoring_options.map((o) =>
+        `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("");
+      $("liveScoring").value = r.scoring_options.some((o) => o.key === want) ? want : r.scoring;
     }
     if (!$("liveWeek").options.length) {
       for (let w = r.current_week; w >= 1; w--) {
@@ -493,7 +496,7 @@ async function ensureTeams() {
 function myTeam() { return prefGet("league.myteam", null) || (sleeperTeams && sleeperTeams.default) || ""; }
 
 async function syncTeamPickers(scoring) {
-  const on = scoring === "sleeper";
+  const on = false;   // team is chosen per league on the Settings tab
   if (on) await ensureTeams();
   $("liveTeamWrap").classList.toggle("hidden", !on || !sleeperTeams?.teams.length);
   $("sbTeamWrap").classList.toggle("hidden", !on || !sleeperTeams?.teams.length);
@@ -550,13 +553,14 @@ async function loadScoreboard(keepDetail = true) {
       }
       $("sbWeek").value = r.week;
     }
-    if (!$("sbScoring").options.length && r.scoring_options) {
-      r.scoring_options.forEach((o) => {
-        const el = document.createElement("option");
-        el.value = o.key; el.textContent = o.label;
-        $("sbScoring").appendChild(el);
-      });
-      $("sbScoring").value = prefGet("live.scoring", "dk");
+    const liveOpts = (liveData && liveData.scoring_options) || r.scoring_options || [];
+    const sbSig = liveOpts.map((o) => o.key).join("|");
+    if (liveOpts.length && $("sbScoring").dataset.sig !== sbSig) {
+      $("sbScoring").dataset.sig = sbSig;
+      const want = prefGet("live.scoring", "dk");
+      $("sbScoring").innerHTML = liveOpts.map((o) =>
+        `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("");
+      $("sbScoring").value = liveOpts.some((o) => o.key === want) ? want : "dk";
     }
     const games = r.live_games ? ` · <b>${r.live_games}</b> in progress` : "";
     $("sbMeta").innerHTML = `<span class="live-dot ${Number(r.week) === Number(r.current_week) ? "" : "stale"}"></span>` +
@@ -608,7 +612,9 @@ async function openBox(away, home) {
   try {
     await syncTeamPickers(scoring);
     const qs = new URLSearchParams({ away, home, scoring });
-    if (scoring === "sleeper" && myTeam()) qs.set("my_team", myTeam());
+    qs.set("leagues", leagueParam());
+    const lid2 = scoring.startsWith("league:") ? scoring.slice(7) : "";
+    if (lid2 && myTeamFor(lid2)) qs.set("my_team", myTeamFor(lid2));
     if (wk) qs.set("week", wk);
     const b = await api(`/api/boxscore?${qs}`);
     const g = (sbData?.games || []).find((x) => x.away === away && x.home === home) || {};
@@ -693,3 +699,135 @@ $("sbAuto").addEventListener("change", setSbTimer);
 document.querySelector('.tab[data-tab="scoreboard"]').addEventListener("click", () => {
   loadScoreboard(); setSbTimer();
 });
+
+// ================================================================ settings ====
+// Leagues and the chosen team live in this browser only, so two people using the
+// site at once each see their own. The salary file is server-side and shared.
+const myLeagues = () => prefGet("settings.leagues", []);          // [{league_id,name,teams}]
+const leagueParam = () => myLeagues().map((l) => l.league_id).join(",");
+const myTeamFor = (leagueId) => (prefGet("settings.myteams", {}) || {})[leagueId] || "";
+
+function setMyTeamFor(leagueId, ownerId) {
+  const all = prefGet("settings.myteams", {}) || {};
+  all[leagueId] = ownerId;
+  prefSet("settings.myteams", all);
+}
+
+async function loadSleeperLeagues(who) {
+  setStatus($("setSleeperStatus"), "Looking up…");
+  try {
+    const r = await api(`/api/sleeper/user?who=${encodeURIComponent(who)}`);
+    prefSet("settings.sleeper_user", { id: r.user_id, name: r.username || r.display_name });
+    prefSet("settings.available", r.leagues);
+    setStatus($("setSleeperStatus"),
+      `${r.username || r.display_name} · ${r.leagues.length} league${r.leagues.length === 1 ? "" : "s"}`, "ok");
+    renderLeagues();
+  } catch (e) {
+    setStatus($("setSleeperStatus"), e.message, "err");
+  }
+}
+
+async function renderLeagues() {
+  const available = prefGet("settings.available", []);
+  const chosen = myLeagues().map((l) => l.league_id);
+  if (!available.length) { $("setLeagues").innerHTML = ""; return; }
+
+  $("setLeagues").innerHTML = available.map((l) => `
+    <div class="leaguerow" data-id="${esc(l.league_id)}">
+      <input type="checkbox" ${chosen.includes(l.league_id) ? "checked" : ""}>
+      <span class="lname">${esc(l.name)}</span>
+      <span class="lmeta">${l.teams || "?"} teams</span>
+      <select class="teamsel" ${chosen.includes(l.league_id) ? "" : "disabled"}>
+        <option value="">— my team —</option>
+      </select>
+    </div>`).join("");
+
+  $("setLeagues").querySelectorAll(".leaguerow").forEach(async (row) => {
+    const id = row.dataset.id;
+    const box = row.querySelector("input");
+    const sel = row.querySelector(".teamsel");
+
+    box.addEventListener("change", () => {
+      const picked = [...$("setLeagues").querySelectorAll(".leaguerow")]
+        .filter((r) => r.querySelector("input").checked)
+        .map((r) => available.find((a) => a.league_id === r.dataset.id))
+        .filter(Boolean);
+      prefSet("settings.leagues", picked);
+      renderLeagues();
+      liveData = null; sbData = null;
+      if ($("live").classList.contains("active")) loadLive();
+    });
+
+    if (!box.checked) return;
+    try {
+      const t = await api(`/api/sleeper/teams?league_id=${encodeURIComponent(id)}`);
+      sel.innerHTML = `<option value="">— my team —</option>` + t.teams.map((x) =>
+        `<option value="${esc(x.owner_id)}">${esc(x.team)}${x.eliminated ? " (out)" : ""}</option>`).join("");
+      sel.value = myTeamFor(id) || t.default || "";
+      if (sel.value && !myTeamFor(id)) setMyTeamFor(id, sel.value);
+      sel.addEventListener("change", () => {
+        setMyTeamFor(id, sel.value);
+        if (liveData) loadLive();
+      });
+    } catch { /* league unreachable; leave the picker empty */ }
+  });
+}
+
+async function loadSettings() {
+  const saved = prefGet("settings.sleeper_user", null);
+  if (saved) {
+    $("setSleeperUser").value = saved.name || "";
+    setStatus($("setSleeperStatus"), `${saved.name} · saved in this browser`, "ok");
+  }
+  renderLeagues();
+
+  try {
+    const s = await api("/api/settings");
+    if (s.salaries) {
+      const sal = s.salaries;
+      setStatus($("setSalStatus"),
+        `${sal.source} · ${sal.players} priced players · ${sal.teams.length} teams` +
+        (sal.uploaded_at ? ` · ${sal.uploaded_at}` : ""), "ok");
+      $("setSalGames").innerHTML = (sal.games || []).map((g) =>
+        `<span class="gamechip">${esc(g.away)} @ ${esc(g.home)}</span>`).join("");
+    } else {
+      setStatus($("setSalStatus"), "No salary file loaded");
+      $("setSalGames").innerHTML = "";
+    }
+  } catch (e) { setStatus($("setSalStatus"), e.message, "err"); }
+}
+
+$("setSleeperLoad").addEventListener("click", () => {
+  const who = $("setSleeperUser").value.trim();
+  if (who) loadSleeperLeagues(who);
+});
+$("setSleeperUser").addEventListener("keydown", (e) => { if (e.key === "Enter") $("setSleeperLoad").click(); });
+$("setSleeperClear").addEventListener("click", () => {
+  ["settings.sleeper_user", "settings.available", "settings.leagues", "settings.myteams"]
+    .forEach((k) => { try { localStorage.removeItem(k); } catch {} });
+  $("setSleeperUser").value = "";
+  setStatus($("setSleeperStatus"), "Cleared");
+  $("setLeagues").innerHTML = "";
+  liveData = null; loadLive();
+});
+
+$("setSalFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  setStatus($("setSalStatus"), "Uploading…");
+  try {
+    const r = await api("/api/settings/salaries", { method: "POST", body: fd });
+    await loadSettings();
+    setStatus($("setSalStatus"), $("setSalStatus").textContent +
+      (r.showdown ? " · showdown file" : ""), "ok");
+    liveData = null; if ($("live").classList.contains("active")) loadLive();
+  } catch (err) { setStatus($("setSalStatus"), err.message, "err"); }
+  e.target.value = "";
+});
+$("setSalClear").addEventListener("click", async () => {
+  await api("/api/settings/salaries", { method: "DELETE" });
+  await loadSettings();
+  liveData = null; if ($("live").classList.contains("active")) loadLive();
+});
+
+document.querySelector('.tab[data-tab="settings"]')?.addEventListener("click", loadSettings);

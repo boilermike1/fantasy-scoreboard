@@ -15,6 +15,7 @@ from .showdown import load_showdown
 
 UPLOADS = Path(__file__).resolve().parent.parent / "data" / "uploads"
 PROJ_PATH = UPLOADS / "projections.csv"
+DK_PATH = UPLOADS / "dk_salaries.csv"
 SD_PATH = UPLOADS / "showdown.csv"
 TTL = 60
 
@@ -62,6 +63,25 @@ def _load(path, showdown):
     return data
 
 
+def dk_salaries():
+    """DraftKings' own export. Public data, so usable on the public site."""
+    key = str(DK_PATH)
+    hit = _cache.get(key)
+    stamp = DK_PATH.stat().st_mtime if DK_PATH.exists() else 0
+    if hit and hit[0] == stamp and time.time() - hit[1] < TTL:
+        return hit[2]
+    if not DK_PATH.exists():
+        return None
+    try:
+        from .dksalaries import load_dk_salaries
+        data = load_dk_salaries(DK_PATH)
+        data["source"] = "DraftKings"
+    except Exception:
+        return None
+    _cache[key] = (stamp, time.time(), data)
+    return data
+
+
 def main_salaries():
     return _load(PROJ_PATH, showdown=False)
 
@@ -70,20 +90,28 @@ def showdown_salaries():
     return _load(SD_PATH, showdown=True)
 
 
-def for_slate(slate_teams=None):
+def for_slate(slate_teams=None, allow_etr=True):
     """Pick the right salary table for the slate being viewed.
 
-    A single game uses the showdown file when that file covers exactly those two teams;
-    anything else falls back to the main-slate file.
+    A DraftKings export wins when it covers the slate — it is public data, so it works
+    on the public site too. ETR files are the fallback and only when allow_etr is set.
     """
     want = {_team(t) for t in (slate_teams or [])}
+
+    dk = dk_salaries()
+    if dk and (not want or (want & dk["teams"])):
+        return dk
+
+    if not allow_etr:
+        return None
+
     if len(want) == 2:
         sd = showdown_salaries()
         if sd and sd["teams"] == want:
             return sd
     table = main_salaries()
     if want and table and not (want & table["teams"]):
-        return None            # this slate isn't in any uploaded file
+        return None
     return table
 
 
