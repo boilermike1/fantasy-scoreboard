@@ -1,0 +1,11 @@
+# Never commit these — they contain the site password and paid ETR projections
+data/
+output/
+output_vele_jj/
+*.csv
+
+# Local noise
+__pycache__/
+*.pyc
+.DS_Store
+.claude/

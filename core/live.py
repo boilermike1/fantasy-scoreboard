@@ -1,0 +1,290 @@
+"""Live NFL scoring leaderboard, DraftKings scoring, via the Sleeper API.
+
+Sleeper's read API is public: no key, no auth. We stay well under its rate limits by
+caching the player dictionary on disk (it changes rarely) and the weekly stat line in
+memory for a few seconds.
+"""
+import json
+import time
+import urllib.request
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from pathlib import Path
+
+from .loader import _norm
+
+BASE = "https://api.sleeper.app/v1"
+TZ = ZoneInfo("America/Chicago")      # the app reports Central regardless of where it runs
+
+
+def now_str():
+    return datetime.now(TZ).strftime("%-I:%M:%S %p %Z")
+CDN_PLAYER = "https://sleepercdn.com/content/nfl/players/{pid}.jpg"
+CDN_TEAM = "https://sleepercdn.com/images/team_logos/nfl/{team}.png"
+CACHE = Path(__file__).resolve().parent.parent / "data" / "cache"
+PLAYERS_CACHE = CACHE / "players.json"
+PLAYERS_TTL = 24 * 3600      # the player dictionary is ~15MB; refresh daily
+STATS_TTL = 20               # seconds; protects the API when both users watch at once
+
+FLEX_OF = ("RB", "WR", "TE")          # what the FLEX board pools together
+POSITIONS = ["QB", "RB", "WR", "TE", "FLEX", "DST", "K"]
+
+# Scoring systems are rule tables applied to Sleeper's stat keys, scoped by position so a
+# defensive stat never scores for a running back. "bonuses" is DK's 100/100/300 yardage set.
+OFFENSE = {
+    "pass_yd": 0.04, "pass_td": 4, "pass_int": -1, "pass_2pt": 2,
+    "rush_yd": 0.1, "rush_td": 6, "rush_2pt": 2,
+    "rec": 1.0, "rec_yd": 0.1, "rec_td": 6, "rec_2pt": 2,
+    "fum_lost": -1, "kr_td": 6, "pr_td": 6,
+}
+DST = {
+    "sack": 1, "int": 2, "fum_rec": 2, "safe": 2, "blk_kick": 2,
+    "def_td": 6, "st_td": 6, "def_st_td": 6, "def_2pt": 2,
+}
+KICKER = {
+    "xpm": 1, "fgm_0_19": 3, "fgm_20_29": 3, "fgm_30_39": 3,
+    "fgm_40_49": 4, "fgm_50_59": 5, "fgm_50p": 5, "fgm_60p": 6,
+}
+# DraftKings points-allowed tiers: (max points allowed, award)
+PTS_ALLOW = [(0, 10), (6, 7), (13, 4), (20, 1), (27, 0), (34, -1), (10 ** 6, -4)]
+
+
+def _system(label, offense=None, dst=None, kicker=None, bonuses=True, pts_allow=None):
+    return {"label": label, "offense": {**OFFENSE, **(offense or {})},
+            "dst": {**DST, **(dst or {})}, "kicker": {**KICKER, **(kicker or {})},
+            "bonuses": bonuses, "pts_allow": pts_allow or PTS_ALLOW}
+
+
+SCORING = {
+    "dk":  _system("DraftKings"),
+    "ppr": _system("PPR", bonuses=False),
+    "ffz": _system("Fan Free Zone", offense={"pass_yd": 0.05, "pass_td": 6}, bonuses=False),
+}
+DEFAULT_SCORING = "dk"
+_stats_cache = {}            # (season, week) -> (fetched_at, payload)
+_sched_cache = {}            # season -> (fetched_at, payload)
+SCHED_TTL = 60               # game status changes during the day
+
+
+def _get(url, timeout=25):
+    req = urllib.request.Request(url, headers={"User-Agent": "dfs-tools/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def get_state():
+    """Current NFL season / week per Sleeper."""
+    s = _get(f"{BASE}/state/nfl")
+    return {"season": str(s.get("season")), "week": int(s.get("week") or 1),
+            "display_week": int(s.get("display_week") or s.get("week") or 1),
+            "season_type": s.get("season_type", "regular")}
+
+
+def get_players(force=False):
+    """id -> {name, pos, team}. Cached on disk; the upstream file is ~15MB."""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    if not force and PLAYERS_CACHE.exists() and time.time() - PLAYERS_CACHE.stat().st_mtime < PLAYERS_TTL:
+        return json.loads(PLAYERS_CACHE.read_text())
+
+    raw = _get(f"{BASE}/players/nfl", timeout=90)
+    slim = {}
+    for pid, p in raw.items():
+        pos = p.get("position")
+        if pos not in ("QB", "RB", "WR", "TE", "K", "DEF"):
+            continue
+        name = p.get("full_name") or " ".join(filter(None, [p.get("first_name"), p.get("last_name")])) or pid
+        slim[pid] = {"name": name, "pos": "DST" if pos == "DEF" else pos, "team": p.get("team") or ""}
+    PLAYERS_CACHE.write_text(json.dumps(slim))
+    return slim
+
+
+def get_stats(season, week, ttl=STATS_TTL):
+    """Stats for one week, or season-to-date totals when week is None."""
+    key = (str(season), week)
+    hit = _stats_cache.get(key)
+    if hit and time.time() - hit[0] < ttl:
+        return hit[1]
+    url = f"{BASE}/stats/nfl/regular/{season}" + (f"/{int(week)}" if week else "")
+    data = _get(url, timeout=45)
+    _stats_cache[key] = (time.time(), data)
+    return data
+
+
+def get_schedule(season):
+    hit = _sched_cache.get(str(season))
+    if hit and time.time() - hit[0] < SCHED_TTL:
+        return hit[1]
+    data = _get(f"https://api.sleeper.app/schedule/nfl/regular/{season}")
+    _sched_cache[str(season)] = (time.time(), data)
+    return data
+
+
+def week_games(season, week):
+    """The schedule rows for one week. Empty on any failure — status is a nicety."""
+    try:
+        return [g for g in get_schedule(season) if int(g.get("week", 0)) == int(week)]
+    except Exception:
+        return []
+
+
+def team_game_status(games):
+    """team abbreviation -> 'pre_game' | 'in_game' | 'complete' | 'canceled'."""
+    out = {}
+    for g in games:
+        for side in ("home", "away"):
+            if g.get(side):
+                out[g[side].upper()] = g.get("status", "")
+    return out
+
+
+# ---------------------------------------------------------------- DK scoring ----
+def normalize_dst(stats, started):
+    """Sleeper omits pts_allow entirely for a shutout, which silently costs a defense its
+    +10. Once the game is under way, a missing value means zero allowed, not no data."""
+    if started and "pts_allow" not in stats:
+        return {**stats, "pts_allow": 0}
+    return stats
+
+
+def _points_allowed(pa, tiers):
+    if pa is None:
+        return 0.0
+    for ceiling, award in tiers:
+        if pa <= ceiling:
+            return float(award)
+    return 0.0
+
+
+def dk_points(s, pos, scoring=DEFAULT_SCORING):
+    """Fantasy points from a Sleeper stat line under the named scoring system."""
+    sysr = SCORING.get(scoring) or SCORING[DEFAULT_SCORING]
+    g = lambda k: float(s.get(k, 0) or 0)
+
+    if pos == "DST":
+        pts = sum(mult * g(k) for k, mult in sysr["dst"].items())
+        return round(pts + _points_allowed(s.get("pts_allow"), sysr["pts_allow"]), 2)
+
+    if pos == "K":
+        rules = sysr["kicker"]
+        pts = sum(mult * g(k) for k, mult in rules.items())
+        made = any(s.get(k) for k in rules if k.startswith("fgm_"))
+        if not made:                       # some feeds report only a total
+            pts = rules.get("xpm", 1) * g("xpm") + 3 * g("fgm")
+        if "fgmiss" in rules:
+            pts += rules["fgmiss"] * g("fgmiss")
+        if "xpmiss" in rules:
+            pts += rules["xpmiss"] * g("xpmiss")
+        return round(pts, 2)
+
+    pts = sum(mult * g(k) for k, mult in sysr["offense"].items())
+    if sysr["bonuses"]:
+        if g("pass_yd") >= 300: pts += 3
+        if g("rush_yd") >= 100: pts += 3
+        if g("rec_yd") >= 100: pts += 3
+    return round(pts, 2)
+
+
+def _statline(s, pos):
+    g = lambda k: float(s.get(k, 0) or 0)
+    bits = []
+    if pos == "DST":
+        for label, key in (("sk", "sack"), ("int", "int"), ("fr", "fum_rec"),
+                           ("TD", "def_td"), ("saf", "safe")):
+            if g(key): bits.append(f"{g(key):.0f} {label}")
+        if s.get("pts_allow") is not None: bits.append(f"{g('pts_allow'):.0f} PA")
+        return ", ".join(bits)
+    if pos == "K":
+        if g("fgm"): bits.append(f"{g('fgm'):.0f}/{g('fga'):.0f} FG")
+        if g("xpm"): bits.append(f"{g('xpm'):.0f} XP")
+        return ", ".join(bits)
+    if g("pass_yd") or g("pass_td"):
+        bits.append(f"{g('pass_yd'):.0f} pass yd, {g('pass_td'):.0f} TD" + (f", {g('pass_int'):.0f} INT" if g("pass_int") else ""))
+    if g("rush_att") or g("rush_yd") or g("rush_td"):
+        car = f"{g('rush_att'):.0f} car, " if g("rush_att") else ""
+        bits.append(f"{car}{g('rush_yd'):.0f} rush yd" + (f", {g('rush_td'):.0f} TD" if g("rush_td") else ""))
+    if g("rec") or g("rec_yd") or g("rec_tgt"):
+        tgt = f"/{g('rec_tgt'):.0f}" if g("rec_tgt") else ""
+        bits.append(f"{g('rec'):.0f}{tgt} rec, {g('rec_yd'):.0f} yd" + (f", {g('rec_td'):.0f} TD" if g("rec_td") else ""))
+    return " · ".join(bits)
+
+
+def leaderboard(season=None, week=None, top=50, scoring=DEFAULT_SCORING, owners=None,
+                teams=None, injuries=None, salaries=None):
+    """Top scorers by position for one NFL week (Thu-Mon), or season to date.
+
+    Pass week="season" for season-to-date totals.
+    """
+    state = get_state()
+    season = str(season or state["season"])
+    season_mode = str(week).lower() == "season"
+    week = None if season_mode else int(week or state["week"])
+
+    players = get_players()
+    stats = get_stats(season, week)
+    games = [] if season_mode else week_games(season, week)
+    status_by_team = team_game_status(games)
+
+    by_pos = {p: [] for p in POSITIONS}
+    for pid, s in stats.items():
+        if pid.startswith("TEAM_"):
+            continue                      # team offensive totals, not a rosterable player
+        meta = players.get(pid)
+        if not meta:
+            continue
+        pos = meta["pos"]
+        if pos not in by_pos or pos == "FLEX":
+            continue
+        if teams is not None and (meta["team"] or pid).upper() not in teams:
+            continue
+        started = status_by_team.get((meta["team"] or pid).upper(), "") in ("in_game", "complete")
+        if pos == "DST":
+            s = normalize_dst(s, started)
+        pts = dk_points(s, pos, scoring)
+        # a board of top scorers, not everyone who played — but a defense that is on the
+        # field belongs there even while it is scoreless
+        if pts <= 0 and not (pos == "DST" and started):
+            continue
+        team = meta["team"] or pid
+        own = (owners or {}).get(str(pid))
+        inj = (injuries or {}).get(_norm(meta["name"]))
+        by_pos[pos].append({
+            "owner": own["team"] if own else "", "mine": bool(own and own["mine"]),
+            "injury": inj["status"] if inj else "", "injury_detail": inj["detail"] if inj else "",
+            "sal": None, "cpt_sal": None,
+            "name": meta["name"], "team": team, "pos": pos,
+            "pts": pts, "line": _statline(s, pos),
+            "img": (CDN_TEAM.format(team=team.lower()) if pos == "DST"
+                    else CDN_PLAYER.format(pid=pid)),
+            "team_img": CDN_TEAM.format(team=team.lower()),
+            "status": status_by_team.get(team.upper(), ""),
+        })
+
+    if salaries:
+        from .salaries import lookup as _sal_lookup
+        for pos_rows in by_pos.values():
+            for row in pos_rows:
+                hit = _sal_lookup(salaries, row["name"], row["team"], row["pos"])
+                if hit:
+                    row["sal"] = hit["sal"]
+                    row["cpt_sal"] = hit.get("cpt_sal")
+
+    # FLEX pools RB/WR/TE — built from the full lists, before each is truncated
+    by_pos["FLEX"] = [dict(r) for p in FLEX_OF for r in by_pos[p]]
+
+    for pos in by_pos:
+        by_pos[pos] = sorted(by_pos[pos], key=lambda r: -r["pts"])[:top]
+
+    return {
+        "season": season,
+        "week": "season" if season_mode else week,
+        "season_mode": season_mode,
+        "current_week": state["week"],
+        "scoring": scoring,
+        "scoring_label": (SCORING.get(scoring) or SCORING[DEFAULT_SCORING])["label"],
+        "scoring_options": [{"key": k, "label": v["label"]} for k, v in SCORING.items()],
+        "live_games": sum(1 for g in games if g.get("status") == "in_game"),
+        "upcoming_games": sum(1 for g in games if g.get("status") == "pre_game"),
+        "positions": POSITIONS,
+        "players": by_pos,
+        "updated_at": now_str(),
+    }

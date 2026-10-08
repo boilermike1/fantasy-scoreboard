@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DFS Tools</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">DFS <span>TOOLS</span></div>
+  <nav>
+    <button class="tab active" data-tab="live">Live</button>
+    <button class="tab" data-tab="scoreboard">Scoreboard</button>
+    <button class="tab" data-tab="optimizer">Main Slate</button>
+    <button class="tab" data-tab="showdown">Showdown</button>
+  </nav>
+  <a class="logout" href="/logout">Log out</a>
+</header>
+
+<main id="optimizer" class="panel">
+  <aside class="controls">
+    <section>
+      <h2>Projections</h2>
+      <label class="filebtn">Upload projections CSV<input type="file" id="projFile" accept=".csv"></label>
+      <div id="projStatus" class="status muted">No projections loaded</div>
+    </section>
+
+    <section>
+      <h2>Paste from Claude <span class="hint">top plays, includes, excludes</span></h2>
+      <textarea id="tpText" placeholder="TOP PLAYS
+Bijan Robinson, 1
+Tre Tucker, 2
+
+INCLUDE
+Jahmyr Gibbs
+
+EXCLUDE
+Jameson Williams
+
+(or just names, one per line)"></textarea>
+      <div class="inline">
+        <button id="tpSave" class="small">Apply</button>
+        <label class="filebtn alt small">Upload file<input type="file" id="tpFile" accept=".csv,.txt"></label>
+        <button id="tpClear" class="small ghost">Clear top plays</button>
+      </div>
+      <div id="tpStatus" class="status muted">No top plays loaded</div>
+    </section>
+
+    <section>
+      <h2>Include / exclude <span class="hint">shared</span></h2>
+      <input type="text" id="playerSearch" placeholder="Search player…" autocomplete="off">
+      <div id="searchResults" class="results"></div>
+      <div class="chipgroup"><div class="label">Include</div><div id="includeChips" class="chips"></div></div>
+      <div class="chipgroup"><div class="label">Exclude</div><div id="excludeChips" class="chips"></div></div>
+    </section>
+
+    <button id="run" class="primary">Optimize</button>
+    <div id="runStatus" class="status"></div>
+  </aside>
+
+  <section class="results-pane">
+    <div id="error"></div>
+    <div class="toolbar hidden" id="toolbar">
+      <span></span>
+      <button id="download" class="small">Download DK upload CSV</button>
+    </div>
+    <div id="lineups"></div>
+    <div id="empty" class="empty">Upload projections, then hit <b>Optimize</b>.</div>
+  </section>
+</main>
+
+<main id="showdown" class="panel">
+  <aside class="controls">
+    <section>
+      <h2>Showdown projections</h2>
+      <label class="filebtn">Upload showdown CSV<input type="file" id="sdFile" accept=".csv"></label>
+      <div id="sdStatus" class="status muted">No showdown slate loaded</div>
+    </section>
+
+    <section>
+      <h2>Captain <span class="hint">1.5&times; points and salary</span></h2>
+      <input type="text" id="sdCaptSearch" placeholder="Search player…" autocomplete="off">
+      <div id="sdCaptResults" class="results"></div>
+      <div class="chipgroup"><div class="label">Captain must be one of</div><div id="sdCaptainPoolChips" class="chips"></div></div>
+      <div class="chipgroup"><div class="label">Never captain <span class="hint">still eligible at FLEX</span></div><div id="sdCaptainExcludeChips" class="chips"></div></div>
+    </section>
+
+    <section>
+      <h2>Include / exclude <span class="hint">shared</span></h2>
+      <input type="text" id="sdSearch" placeholder="Search player…" autocomplete="off">
+      <div id="sdResults" class="results"></div>
+      <div class="chipgroup"><div class="label">Include</div><div id="sdIncludeChips" class="chips"></div></div>
+      <div class="chipgroup"><div class="label">Exclude</div><div id="sdExcludeChips" class="chips"></div></div>
+    </section>
+
+    <button id="sdRun" class="primary">Optimize</button>
+    <div id="sdRunStatus" class="status"></div>
+  </aside>
+
+  <section class="results-pane">
+    <div id="sdError"></div>
+    <div class="toolbar hidden" id="sdToolbar">
+      <span id="sdSummary"></span>
+      <button id="sdDownload" class="small">Download DK upload CSV</button>
+    </div>
+    <div id="sdLineups"></div>
+    <div id="sdEmpty" class="empty">Upload a showdown slate, then hit <b>Optimize</b>.</div>
+  </section>
+</main>
+
+<main id="scoreboard" class="panel">
+  <section class="results-pane wide">
+    <div class="livebar">
+      <div class="livebar-left">
+        <label class="inlinelabel">Week <select id="sbWeek"></select></label>
+        <label class="inlinelabel">Scoring <select id="sbScoring"></select></label>
+        <label class="inlinelabel hidden" id="sbTeamWrap">My team <select id="sbTeam"></select></label>
+        <label class="check"><input type="checkbox" id="sbAuto" checked> Auto-refresh</label><span id="sbAutoNote" class="autonote"></span>
+        <button id="sbRefresh" class="small">Refresh now</button>
+      </div>
+      <div id="sbMeta" class="status muted"></div>
+    </div>
+    <div id="sbError"></div>
+    <div id="sbGames" class="games"></div>
+    <div id="sbDetail" class="hidden"></div>
+  </section>
+</main>
+
+<main id="live" class="panel active">
+  <section class="results-pane wide">
+    <div class="livebar">
+      <div class="livebar-left">
+        <label class="inlinelabel">Week
+          <select id="liveWeek"></select>
+        </label>
+        <label class="inlinelabel" id="liveSlateWrap">Slate <select id="liveSlate"></select></label>
+        <label class="inlinelabel">Scoring
+          <select id="liveScoring"></select>
+        </label>
+        <label class="inlinelabel hidden" id="liveTeamWrap">My team <select id="liveTeam"></select></label>
+        <label class="check"><input type="checkbox" id="liveAuto" checked> Auto-refresh</label><span id="liveAutoNote" class="autonote"></span>
+        <button id="liveRefresh" class="small">Refresh now</button>
+      </div>
+      <div id="liveMeta" class="status muted"></div>
+    </div>
+    <div id="posBar" class="posbar"></div>
+    <div id="liveError"></div>
+    <div id="liveBoard" class="board"></div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

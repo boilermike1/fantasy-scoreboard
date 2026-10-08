@@ -1,0 +1,11 @@
+# Never ship these to a public server:
+data/            # uploaded ETR projections (paid content) and config.json (password)
+output/
+*.csv
+.DS_Store
+__pycache__/
+*.pyc
+.claude/
+run.sh
+dk_optimizer.py
+README.md
