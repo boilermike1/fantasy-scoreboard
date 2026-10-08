@@ -12,6 +12,20 @@ dk_optimizer.py   command-line version
 run.sh            start the web server
 ```
 
+## ESPN is fetched by the browser, not the server
+
+ESPN's public endpoints return **403 to datacenter IPs**, so once hosted the server cannot reach
+them (Sleeper has no such restriction). ESPN allows cross-origin browser requests, so `web/espn.js`
+fetches the scoreboard, slate windows, live game situation, play-by-play and in-game injuries from
+each visitor's own browser, mirroring what `core/scoreboard.py` does locally.
+
+Consequences:
+- `/api/live` no longer derives slates itself; the client sends `slate_teams=` (and `single_game=`).
+- `/api/scoreboard` returns `{"unavailable": true}` instead of failing when ESPN refuses it; the
+  client then fetches ESPN directly.
+- The server-side ESPN code still works on the local private app, where requests come from a
+  residential IP.
+
 ## Live site
 
 The public scoreboard runs at **https://fantasyscoreboard.mikemendel.com** (Fly.io app

@@ -142,7 +142,7 @@ class NoCacheStatic(StaticFiles):
 
 def _asset_version():
     try:
-        return str(int(max((WEB / f).stat().st_mtime for f in ("app.js", "style.css"))))
+        return str(int(max((WEB / f).stat().st_mtime for f in ("app.js", "style.css", "espn.js"))))
     except OSError:
         return "0"
 
@@ -154,6 +154,7 @@ def index():
     v = _asset_version()
     html = (html.replace("/static/style.css", f"/static/style.css?v={v}")
                 .replace("/static/app.js", f"/static/app.js?v={v}")
+                .replace("/static/espn.js", f"/static/espn.js?v={v}")
                 .replace("</head>", f'<script>window.DFS_MODE="{MODE}";</script>\n</head>'))
     if PUBLIC_MODE:
         # the public site isn't "DFS Tools" — drop the banner and retitle the page
@@ -367,7 +368,7 @@ def export_showdown(body: dict):
 @app.get("/api/live")
 def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk",
          my_team: str = None, slate: str = "all", optimal: bool = False,
-         leagues: str = None):
+         leagues: str = None, slate_teams: str = None, single_game: bool = False):
     """Top scorers by position for one NFL week (Thu-Mon), or week="season" for season to date."""
     try:
         # register whichever leagues this visitor picked (falling back to the env default)
@@ -383,23 +384,16 @@ def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk
         owners = sleeper_league.ownership(league_id, my_team) if league_id else None
 
         season_mode = str(week).lower() == "season"
+        # The slate's teams come from the client, which derives them from ESPN kickoff
+        # times. Slate options themselves are built in the browser.
         slates, teams, active = [], None, "all"
-        if not season_mode:
-            slates = week_slates(season, week)
-            chosen = next((s for s in slates if s["key"] == slate), None)
-            if chosen and chosen["teams"] is not None:
-                teams, active = set(chosen["teams"]), chosen["key"]
+        if not season_mode and slate_teams:
+            picked = {t.strip().upper() for t in slate_teams.split(",") if t.strip()}
+            if picked:
+                teams, active = picked, (slate or "custom")
 
-        hurt = {}
-        if not season_mode:
-            try:
-                sb = get_scoreboard(season, week)
-                hurt = espn_injuries([g for g in sb["games"] if g["state"] == "in"])
-            except Exception:
-                pass                      # injuries are a nicety; never fail the board
-        # DraftKings salaries only, and only from the file matching this slate
-        single_game = active.startswith("game:")
-        # salaries come from paid ETR files, so the public site never serves them
+        hurt = {}          # injuries now come from the browser (see web/espn.js)
+
         # DK's own export is public data and fine everywhere; ETR files are private-only
         table = (dk_salaries.for_slate(sorted(teams) if teams else None, allow_etr=not PUBLIC_MODE)
                  if scoring == "dk" else None)
@@ -446,11 +440,16 @@ def live_state_endpoint():
 # ---------------------------------------------------------------- scoreboard ----
 @app.get("/api/scoreboard")
 def scoreboard(season: str = None, week: int = None):
-    """Every game for the week, in-progress first and finals last."""
+    """Every game for the week, in-progress first and finals last.
+
+    Returns {"unavailable": true} rather than failing when ESPN refuses the server's IP —
+    the browser fetches ESPN directly in that case.
+    """
     try:
         return get_scoreboard(season, week)
     except Exception as e:
-        raise HTTPException(502, f"Could not load the scoreboard: {e}")
+        return {"games": [], "live_games": 0, "upcoming_games": 0,
+                "unavailable": True, "error": str(e)}
 
 
 @app.get("/api/boxscore")

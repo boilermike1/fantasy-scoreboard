@@ -49,7 +49,15 @@ def get_scoreboard(season=None, week=None):
     if hit and time.time() - hit[0] < SB_TTL:
         games = hit[1]
     else:
-        raw = _get(ESPN.format(season=season, week=week), timeout=25)
+        try:
+            raw = _get(ESPN.format(season=season, week=week), timeout=25)
+        except Exception:
+            # ESPN refuses datacenter IPs; the browser fetches it instead (see web/espn.js).
+            return {"season": season, "week": week, "current_week": state["week"],
+                    "scoring_options": [{"key": k, "label": SCORING[k]["label"]}
+                                        for k in SCORING if not k.startswith("league:")],
+                    "games": [], "live_games": 0, "upcoming_games": 0,
+                    "unavailable": True, "updated_at": now_str()}
         games = []
         for e in raw.get("events", []):
             comp = (e.get("competitions") or [{}])[0]

@@ -24,6 +24,8 @@ async function api(path, opts = {}) {
   return data;
 }
 const money = (n) => "$" + n.toLocaleString();
+const nowCentral = () => new Date().toLocaleTimeString("en-US",
+  { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short" });
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function setStatus(el, msg, cls = "muted") { el.textContent = msg; el.className = "status " + cls; }
 // fantasy-team tag, shown only when a league scoring mode is active
@@ -267,6 +269,23 @@ if (PUBLIC_MODE) {
 
 // ================================================================ live ====
 let liveTimer = null, liveLoading = false, livePending = false, liveData = null;
+let liveSeason = null, liveWeekNow = null, liveEspn = null;
+
+// Pull in-game injuries from ESPN (browser-side) and attach them to the server's rows.
+async function applyEspnInjuries(payload, games) {
+  const live = (games || []).filter((g) => g.state === "in");
+  if (!live.length) return;
+  try {
+    const parts = await Promise.all(live.map((g) => espnGameDetail(g.id, g.start).catch(() => null)));
+    const merged = {};
+    parts.forEach((p) => p && Object.assign(merged, p.injuries));
+    if (!Object.keys(merged).length) return;
+    payload.positions.forEach((pos) => (payload.players[pos] || []).forEach((row) => {
+      const hit = merged[normName(row.name)];
+      if (hit) { row.injury = hit.status; row.injury_detail = hit.detail; }
+    }));
+  } catch { /* injuries are a nicety */ }
+}
 
 // Polling cadence follows the slate: fast while games are being played, a slow check
 // while waiting for kickoff, and nothing at all once every game is final.
@@ -399,14 +418,48 @@ async function loadLive() {
     const wk = $("liveWeek").value;
     const scoring = $("liveScoring").value || prefGet("live.scoring", "dk");
     await syncTeamPickers(scoring);
+
+    // ESPN needs a concrete season/week, so learn those before asking it
+    if (!liveWeekNow) {
+      try {
+        const st = await api("/api/live/state");
+        liveSeason = st.season; liveWeekNow = st.week;
+      } catch { /* fall through; slates just stay empty this pass */ }
+    }
+
+    // ESPN is fetched here, not on the server (it refuses datacenter IPs)
+    const seasonMode = wk === "season";
+    let slates = [], espnGames = [];
+    if (!seasonMode) {
+      try {
+        const sb = await espnScoreboard(liveSeason, wk || liveWeekNow);
+        espnGames = sb.games;
+        slates = espnSlates(sb.games);
+        liveEspn = sb;
+      } catch { slates = []; }
+    }
+
     const qs = new URLSearchParams({ scoring });
     qs.set("leagues", leagueParam());
     const lid = scoring.startsWith("league:") ? scoring.slice(7) : "";
     if (lid && myTeamFor(lid)) qs.set("my_team", myTeamFor(lid));
     if (wk) qs.set("week", wk);
-    if ($("liveSlate").value) qs.set("slate", $("liveSlate").value);
+    const slateKey = $("liveSlate").value || "all";
+    const chosenSlate = slates.find((x) => x.key === slateKey);
+    if (chosenSlate && chosenSlate.teams) {
+      qs.set("slate", slateKey);
+      qs.set("slate_teams", chosenSlate.teams.join(","));
+      if (slateKey.startsWith("game:")) qs.set("single_game", "true");
+    }
     if (prefGet("live.optimal", false)) qs.set("optimal", "true");
     const r = await api(`/api/live?${qs}`);
+    if (!seasonMode) {
+      r.slates = slates;
+      r.slate = slateKey;
+      r.live_games = liveEspn ? liveEspn.live_games : r.live_games;
+      r.upcoming_games = liveEspn ? liveEspn.upcoming_games : r.upcoming_games;
+      await applyEspnInjuries(r, espnGames);
+    }
     liveData = r;
     $("liveError").innerHTML = "";
 
@@ -430,27 +483,28 @@ async function loadLive() {
       $("liveWeek").appendChild(season);
       $("liveWeek").value = r.season_mode ? "season" : r.week;
     }
+    liveSeason = r.season; liveWeekNow = r.current_week;
     const posSig = r.positions.join("|") + (r.salaries ? "+s" : "");
     if ($("posBar").dataset.sig !== posSig) {
       $("posBar").dataset.sig = posSig;
       renderPosBar(r.positions, !!r.salaries);
     }
 
-    const slates = r.slates || [];
-    $("liveSlateWrap").classList.toggle("hidden", !slates.length);
+    const slateOpts = r.slates || [];
+    $("liveSlateWrap").classList.toggle("hidden", !slateOpts.length);
     const wantSlate = $("liveSlate").value || "all";
-    const signature = slates.map((x) => x.key).join("|");
+    const signature = slateOpts.map((x) => x.key).join("|");
     if ($("liveSlate").dataset.sig !== signature) {
       $("liveSlate").dataset.sig = signature;
-      $("liveSlate").innerHTML = slates.map((x) =>
+      $("liveSlate").innerHTML = slateOpts.map((x) =>
         `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join("");
-      $("liveSlate").value = slates.some((x) => x.key === wantSlate) ? wantSlate : "all";
+      $("liveSlate").value = slateOpts.some((x) => x.key === wantSlate) ? wantSlate : "all";
     }
 
     const isCurrent = r.season_mode || Number(r.week) === Number(r.current_week);
     const when = r.season_mode ? `${r.season} season to date` : `${r.season} Week ${r.week}`;
     const games = r.live_games ? ` · <b>${r.live_games}</b> game${r.live_games > 1 ? "s" : ""} in progress` : "";
-    const slateLabel = (r.slates || []).find((x) => x.key === r.slate);
+    const slateLabel = slateOpts.find((x) => x.key === r.slate);
     const slateTxt = slateLabel && r.slate !== "all" ? ` · ${esc(slateLabel.label)}` : "";
     $("liveMeta").innerHTML = `<span class="live-dot ${isCurrent ? "" : "stale"}"></span>` +
       `${when}${slateTxt} · ${esc(r.scoring_label)}${games} · updated ${esc(r.updated_at)}`;
@@ -541,7 +595,13 @@ async function loadScoreboard(keepDetail = true) {
   sbLoading = true;
   try {
     const wk = $("sbWeek").value;
-    const r = await api(`/api/scoreboard${wk ? `?week=${wk}` : ""}`);
+    let r = await api(`/api/scoreboard${wk ? `?week=${wk}` : ""}`);
+    if (r.unavailable || !r.games.length) {
+      // ESPN blocks the server's IP; fetch it here instead
+      const sb = await espnScoreboard(r.season || liveSeason || new Date().getFullYear(),
+                                      wk || r.current_week || liveWeekNow);
+      r = { ...r, ...sb, unavailable: false, updated_at: nowCentral() };
+    }
     sbData = r;
     $("sbError").innerHTML = "";
 
@@ -618,6 +678,17 @@ async function openBox(away, home) {
     if (wk) qs.set("week", wk);
     const b = await api(`/api/boxscore?${qs}`);
     const g = (sbData?.games || []).find((x) => x.away === away && x.home === home) || {};
+    b.game = { ...(b.game || {}), ...g };
+    if (g.state === "in" && g.id) {
+      try {
+        const extra = await espnGameDetail(g.id, g.start);
+        b.plays = extra.plays;
+        b.teams.forEach((side) => side.players.forEach((p) => {
+          const hit = extra.injuries[normName(p.name)];
+          if (hit) { p.injury = hit.status; p.injury_detail = hit.detail; }
+        }));
+      } catch { /* plays are a nicety */ }
+    }
 
     const table = (side) => {
       let lastPos = null;
