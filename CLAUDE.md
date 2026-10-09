@@ -76,7 +76,8 @@ cost defenses their +10. `normalize_dst()` handles it; don't "simplify" it away.
   `2a09:8280:1::1ae:d650:0`, grey cloud. Password is the Fly secret `DFS_PASSWORD`.
   `data/` is the 1 GB volume `dfs_data`, so uploads survive restarts. Hosted full mode
   with no password locks everyone out rather than opening up (`_authed`).
-  The same push to `main` deploys both apps.
+  The same push to `main` deploys both apps (tools uses secret `FLY_API_TOKEN_TOOLS`,
+  a deploy token scoped to `dfs-tools` that expires 2027-10-09).
 
 **Never run `fly launch` again** — the app exists; re-running it rewrites `fly.toml`
 and creates duplicate apps. Use `fly deploy`, or just push to `main`.
