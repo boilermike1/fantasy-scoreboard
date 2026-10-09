@@ -1,0 +1,27 @@
+# Private DFS Tools site (dfstools.mikemendel.com): every tab, password protected.
+# The public scoreboard is fly.toml. Deploy with: fly deploy -c fly.tools.toml
+
+app = 'dfs-tools'
+primary_region = 'ord'
+
+[build]
+[env]
+  DFS_MODE = 'full'
+
+# Uploaded ETR files, meta.json and the session key live on a volume so they
+# survive restarts and redeploys. Password comes from the DFS_PASSWORD secret.
+[mounts]
+  source = 'dfs_data'
+  destination = '/app/data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'suspend'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512

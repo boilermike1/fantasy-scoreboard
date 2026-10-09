@@ -12,7 +12,8 @@ Two products from one codebase, selected by the `DFS_MODE` environment variable:
 | `scoreboard` | Live, Scoreboard, Settings | none | Sleeper + ESPN + DK salaries (all public) |
 | `full` (default) | the above plus Main Slate, Showdown | yes | adds ETR projections (paid) |
 
-`scoreboard` is the public site. `full` runs on Mike's Mac for his own DFS work.
+`scoreboard` is the public site. `full` runs on Mike's Mac and at
+`dfstools.mikemendel.com` (Fly app `dfs-tools`) for his own DFS work.
 
 ## Layout
 
@@ -69,6 +70,13 @@ cost defenses their +10. `normalize_dst()` handles it; don't "simplify" it away.
 - Repo: https://github.com/boilermike1/fantasy-scoreboard (private). Push to `main`
   deploys via GitHub Actions using repo secret `FLY_API_TOKEN`.
 - League defaults: Fly secrets `SLEEPER_LEAGUE_ID` / `SLEEPER_USER_ID`.
+
+- Private tools site: Fly app `dfs-tools` (config `fly.tools.toml`, `DFS_MODE=full`),
+  domain `dfstools.mikemendel.com` — A to `66.241.124.121`, AAAA to
+  `2a09:8280:1::1ae:d650:0`, grey cloud. Password is the Fly secret `DFS_PASSWORD`.
+  `data/` is the 1 GB volume `dfs_data`, so uploads survive restarts. Hosted full mode
+  with no password locks everyone out rather than opening up (`_authed`).
+  The same push to `main` deploys both apps.
 
 **Never run `fly launch` again** — the app exists; re-running it rewrites `fly.toml`
 and creates duplicate apps. Use `fly deploy`, or just push to `main`.

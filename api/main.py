@@ -70,7 +70,11 @@ def _token():
 
 
 def _authed(req: Request):
-    return not _password() or req.cookies.get(COOKIE) == _token()
+    if not _password():
+        # Open access is for local use only; hosted full mode without a password
+        # would publish the paid ETR uploads, so lock it instead.
+        return PUBLIC_MODE or not os.environ.get("FLY_APP_NAME")
+    return req.cookies.get(COOKIE) == _token()
 
 
 LOGIN_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>DFS Tools</title>

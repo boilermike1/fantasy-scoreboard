@@ -12,7 +12,7 @@ COPY core/ ./core/
 COPY api/ ./api/
 COPY web/ ./web/
 
-# The public scoreboard: no password, no optimizer tabs, no ETR files
+# Defaults to the public scoreboard; fly.tools.toml overrides this to full mode
 ENV DFS_MODE=scoreboard
 EXPOSE 8080
 
