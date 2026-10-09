@@ -86,9 +86,8 @@ and creates duplicate apps. Use `fly deploy`, or just push to `main`.
 
 ## Open items
 
-- **Billing**: the Fly trial (2 hours of machine runtime) ended and suspended the app.
-  Needs a card, or a move to Cloudflare Tunnel / another host.
-- Two machines were created; one is enough (`fly scale count 1`).
+- Billing is live (card added 2026-10-08) and the app runs on **one** machine that
+  suspends when idle. Expect well under $1/month at this usage.
 - Yahoo leagues: scoped but not built — needs OAuth, per-user token storage, XML mapping.
 - DK salary upload is shared and unauthenticated on the public site.
 - Tournament tool was dropped in favour of doing analysis in Cowork.
