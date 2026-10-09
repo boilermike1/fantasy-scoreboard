@@ -147,6 +147,12 @@ def _asset_version():
         return "0"
 
 
+# Cloudflare Web Analytics, public site only. The site is grey-cloud (not proxied), so
+# visits are counted by this browser-side beacon; view under the mikemendel.com site.
+CF_ANALYTICS = ("<script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' "
+                "data-cf-beacon='{\"token\": \"32364fb3064143768104bb94b701d5c4\"}'></script>")
+
+
 @app.get("/")
 def index():
     """Serve the page with version-stamped asset URLs so browsers can't cache across deploys."""
@@ -159,7 +165,8 @@ def index():
     if PUBLIC_MODE:
         # the public site isn't "DFS Tools" — drop the banner and retitle the page
         html = (html.replace("<title>DFS Tools</title>", "<title>Fantasy Scoreboard</title>")
-                    .replace('<div class="brand">DFS <span>TOOLS</span></div>', ""))
+                    .replace('<div class="brand">DFS <span>TOOLS</span></div>', "")
+                    .replace("</body>", CF_ANALYTICS + "\n</body>"))
     return HTMLResponse(html, headers=NO_CACHE)
 
 
