@@ -5,6 +5,7 @@ import hmac
 import io
 import json
 import os
+import re
 import secrets
 import time
 from pathlib import Path
@@ -35,6 +36,7 @@ PROJ_PATH = UPLOADS / "projections.csv"
 TP_PATH = UPLOADS / "top_plays.txt"
 SD_PATH = UPLOADS / "showdown.csv"
 META_PATH = DATA / "meta.json"
+SLATES = DATA / "slates"
 SECRET_PATH = DATA / "secret.key"
 COOKIE = "dfs_session"
 
@@ -95,7 +97,7 @@ app = FastAPI(title="DFS Tools")
 # /api/state carries the uploaded ETR player list (names, salaries, projections) —
 # paid content that must never be served from the public site.
 PRIVATE_PREFIXES = ("/api/state", "/api/upload", "/api/optimize", "/api/export",
-                    "/api/picks", "/api/top_plays", "/api/showdown")
+                    "/api/picks", "/api/top_plays", "/api/showdown", "/api/slates")
 # /api/settings/* stays open on the public site: DK salary exports are public data
 
 
@@ -178,42 +180,93 @@ app.mount("/static", NoCacheStatic(directory=WEB), name="static")
 
 
 # ---------------------------------------------------------------- data ----
-def _meta():
-    return json.loads(META_PATH.read_text()) if META_PATH.exists() else {}
+# Each DFS slate (main, a full-day slate, a showdown) keeps its own uploads and picks
+# under data/slates/<sid>/. The browser names the slates from ESPN's schedule. No sid
+# means the original single-slot files, still used if the schedule can't be loaded.
+SID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
 
-def _save_meta(**kw):
-    m = _meta(); m.update(kw); META_PATH.write_text(json.dumps(m, indent=2))
+class Slot:
+    def __init__(self, sid=None):
+        if sid and sid != "default":
+            if not SID_RE.match(sid):
+                raise HTTPException(400, "Bad slate id.")
+            d = SLATES / sid
+            self.proj, self.tp, self.sd = d / "projections.csv", d / "top_plays.txt", d / "showdown.csv"
+            self.meta_path = d / "meta.json"
+        else:
+            self.proj, self.tp, self.sd, self.meta_path = PROJ_PATH, TP_PATH, SD_PATH, META_PATH
+
+    def write(self, path, raw):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
 
 
-def _players():
-    if not PROJ_PATH.exists():
+def _meta(slot=None):
+    path = (slot or Slot()).meta_path
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _save_meta(slot=None, **kw):
+    slot = slot or Slot()
+    m = _meta(slot); m.update(kw)
+    slot.write(slot.meta_path, json.dumps(m, indent=2).encode())
+
+
+def _save_info(slot, info):
+    """Remember what the slate is (label, teams, week) so past weeks can be listed later."""
+    if not info:
+        return
+    try:
+        info = json.loads(info)
+    except ValueError:
+        return
+    if isinstance(info, dict):
+        _save_meta(slot, info=info)
+
+
+def _players(slot):
+    if not slot.proj.exists():
         raise HTTPException(400, "No projections uploaded yet.")
-    return load_projections(PROJ_PATH)
+    return load_projections(slot.proj)
 
 
-def _top_plays():
-    return load_top_plays(TP_PATH) if TP_PATH.exists() else None
+def _top_plays(slot):
+    return load_top_plays(slot.tp) if slot.tp.exists() else None
+
+
+@app.get("/api/slates")
+def list_slates():
+    """Slates that have anything saved, newest first — feeds the past-weeks picker."""
+    out = []
+    for d in SLATES.glob("*/meta.json") if SLATES.exists() else []:
+        info = json.loads(d.read_text()).get("info")
+        if info:
+            out.append({**info, "sid": d.parent.name})
+    out.sort(key=lambda x: (x.get("season", 0), x.get("type", 0), x.get("week", 0), x.get("order", 0)),
+             reverse=True)
+    return {"slates": out}
 
 
 @app.get("/api/state")
-def state():
-    m = _meta()
+def state(sid: str = None):
+    slot = Slot(sid)
+    m = _meta(slot)
     out = {"projections": m.get("projections"), "top_plays": m.get("top_plays"), "players": [],
            "picks": m.get("picks") or {"include": [], "exclude": []},
            "showdown": m.get("showdown"), "sd_players": [],
            "sd_picks": m.get("sd_picks") or {"include": [], "exclude": [],
                                              "captain_pool": [], "captain_exclude": []}}
-    if PROJ_PATH.exists():
-        df = load_projections(PROJ_PATH)
+    if slot.proj.exists():
+        df = load_projections(slot.proj)
         out["players"] = df[["name", "pos", "team", "opp", "sal", "proj", "own_small", "own_large"]].to_dict("records")
         out["teams"] = sorted(df.team.unique().tolist())
-    tp = _top_plays()
+    tp = _top_plays(slot)
     if tp is not None:
         out["top_play_names"] = tp.name.tolist()
-    if SD_PATH.exists():
+    if slot.sd.exists():
         try:
-            sd = load_showdown(SD_PATH)
+            sd = load_showdown(slot.sd)
             out["sd_players"] = sd[["name", "pos", "team", "sal", "proj", "cpt_sal", "cpt_proj"]].to_dict("records")
         except Exception as e:
             out["showdown_error"] = str(e)
@@ -229,7 +282,8 @@ def _parses_as(loader, raw):
 
 
 @app.post("/api/upload/projections")
-async def upload_projections(file: UploadFile = File(...)):
+async def upload_projections(file: UploadFile = File(...), sid: str = None, info: str = Form(None)):
+    slot = Slot(sid)
     raw = await file.read()
     try:
         df = load_projections(raw)
@@ -237,13 +291,15 @@ async def upload_projections(file: UploadFile = File(...)):
         if _parses_as(load_showdown, raw):
             raise HTTPException(400, "That looks like a showdown slate — upload it on the Showdown tab instead.")
         raise HTTPException(400, f"Could not parse projections: {e}")
-    PROJ_PATH.write_bytes(raw)
-    _save_meta(projections={"filename": file.filename, "uploaded_at": time.strftime("%Y-%m-%d %H:%M"), "players": len(df)})
+    slot.write(slot.proj, raw)
+    _save_info(slot, info)
+    _save_meta(slot, projections={"filename": file.filename, "uploaded_at": time.strftime("%Y-%m-%d %H:%M"), "players": len(df)})
     return {"ok": True, "players": len(df)}
 
 
 @app.post("/api/upload/top_plays")
-async def upload_top_plays(file: UploadFile = File(None), text: str = Form(None)):
+async def upload_top_plays(file: UploadFile = File(None), text: str = Form(None), sid: str = None,
+                           info: str = Form(None)):
     """Accepts a top-plays file, or a pasted block with TOP PLAYS / INCLUDE / EXCLUDE sections."""
     if file is not None and file.filename:
         raw = await file.read(); label = file.filename
@@ -253,18 +309,20 @@ async def upload_top_plays(file: UploadFile = File(None), text: str = Form(None)
         block = parse_paste_block(text)
     else:
         raise HTTPException(400, "Provide a file or text.")
+    slot = Slot(sid)
+    _save_info(slot, info)
 
     tp = block["top_plays"]
     out = {"ok": True, "count": int(len(tp)), "report": None, "picks": None}
     if len(tp):
-        TP_PATH.write_bytes(tp[["name", "weight"]].rename(columns={"name": "Player", "weight": "Weight"}).to_csv(index=False).encode())
-        _save_meta(top_plays={"filename": label, "uploaded_at": time.strftime("%Y-%m-%d %H:%M"), "count": int(len(tp))})
-    if PROJ_PATH.exists():
-        df = load_projections(PROJ_PATH)
+        slot.write(slot.tp, tp[["name", "weight"]].rename(columns={"name": "Player", "weight": "Weight"}).to_csv(index=False).encode())
+        _save_meta(slot, top_plays={"filename": label, "uploaded_at": time.strftime("%Y-%m-%d %H:%M"), "count": int(len(tp))})
+    if slot.proj.exists():
+        df = load_projections(slot.proj)
         report = {"matched": [], "unmatched": [], "ambiguous": []}
         if len(tp):
             report = Optimizer(df, settings_from_dict({}), tp).top_play_report
-        picks = _meta().get("picks") or {"include": [], "exclude": []}
+        picks = _meta(slot).get("picks") or {"include": [], "exclude": []}
         for key in ("include", "exclude"):
             for name in block[key]:
                 idx, un, amb = match_names(df, [name])
@@ -278,32 +336,34 @@ async def upload_top_plays(file: UploadFile = File(None), text: str = Form(None)
                 report["unmatched"] += un
                 report["ambiguous"] += [f"{r} -> {', '.join(o)}" for r, o in amb]
         if block["include"] or block["exclude"]:
-            _save_meta(picks=picks)
+            _save_meta(slot, picks=picks)
         out["report"] = report
         out["picks"] = picks
     return out
 
 
 @app.post("/api/picks")
-def save_picks(body: dict):
+def save_picks(body: dict, sid: str = None):
     picks = {"include": list(body.get("include", [])), "exclude": list(body.get("exclude", []))}
-    _save_meta(picks=picks)
+    _save_meta(Slot(sid), picks=picks)
     return {"ok": True, "picks": picks}
 
 
 @app.delete("/api/top_plays")
-def clear_top_plays():
-    if TP_PATH.exists(): TP_PATH.unlink()
-    _save_meta(top_plays=None)
+def clear_top_plays(sid: str = None):
+    slot = Slot(sid)
+    if slot.tp.exists(): slot.tp.unlink()
+    _save_meta(slot, top_plays=None)
     return {"ok": True}
 
 
 # ---------------------------------------------------------------- optimize ----
 @app.post("/api/optimize")
-def optimize(body: dict):
-    df = _players()
+def optimize(body: dict, sid: str = None):
+    slot = Slot(sid)
+    df = _players(slot)
     settings = settings_from_dict(body)
-    tp = _top_plays()
+    tp = _top_plays(slot)
     if tp is not None and "top_play_bonus" not in body:
         settings.top_play_bonus = DEFAULT_TOP_PLAY_BONUS
     opt = Optimizer(df, settings, tp)
@@ -325,14 +385,15 @@ def export_dk_upload(body: dict):
 
 
 # ---------------------------------------------------------------- showdown ----
-def _sd_players():
-    if not SD_PATH.exists():
+def _sd_players(slot):
+    if not slot.sd.exists():
         raise HTTPException(400, "No showdown projections uploaded yet.")
-    return load_showdown(SD_PATH)
+    return load_showdown(slot.sd)
 
 
 @app.post("/api/showdown/upload")
-async def upload_showdown(file: UploadFile = File(...)):
+async def upload_showdown(file: UploadFile = File(...), sid: str = None, info: str = Form(None)):
+    slot = Slot(sid)
     raw = await file.read()
     try:
         df = load_showdown(raw)
@@ -340,25 +401,26 @@ async def upload_showdown(file: UploadFile = File(...)):
         if _parses_as(load_projections, raw):
             raise HTTPException(400, "That looks like a main-slate file — upload it on the Main Slate tab instead.")
         raise HTTPException(400, f"Could not parse showdown projections: {e}")
-    SD_PATH.write_bytes(raw)
+    slot.write(slot.sd, raw)
+    _save_info(slot, info)
     teams = sorted(df.team.unique())
     skipped = int(df.attrs.get("skipped_no_proj", 0))
-    _save_meta(showdown={"filename": file.filename, "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
+    _save_meta(slot, showdown={"filename": file.filename, "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
                          "players": len(df), "teams": teams, "skipped": skipped},
                sd_picks={"include": [], "exclude": [], "captain_pool": [], "captain_exclude": []})
     return {"ok": True, "players": len(df), "teams": teams, "skipped": skipped}
 
 
 @app.post("/api/showdown/picks")
-def save_showdown_picks(body: dict):
+def save_showdown_picks(body: dict, sid: str = None):
     picks = {k: list(body.get(k, [])) for k in ("include", "exclude", "captain_pool", "captain_exclude")}
-    _save_meta(sd_picks=picks)
+    _save_meta(Slot(sid), sd_picks=picks)
     return {"ok": True, "picks": picks}
 
 
 @app.post("/api/showdown/optimize")
-def optimize_showdown(body: dict):
-    df = _sd_players()
+def optimize_showdown(body: dict, sid: str = None):
+    df = _sd_players(Slot(sid))
     opt = ShowdownOptimizer(df, showdown_settings_from_dict(body))
     try:
         lineups = opt.solve()

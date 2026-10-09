@@ -59,6 +59,16 @@ displayed scores — snapshot before and after.
 **Sleeper omits `pts_allow` for a shutout** rather than sending zero, which silently
 cost defenses their +10. `normalize_dst()` handles it; don't "simplify" it away.
 
+**Optimizer tabs are one per DFS slate, built weekly from ESPN's schedule** in the
+browser (`dfsWeek`/`dfsSlates` in `web/espn.js`). Rules, Eastern time: Sunday 12–6pm is
+the Main slate; other Sunday games (international mornings, SNF) are showdowns; a
+non-Sunday day with one game is a showdown; with 2+ games it's one classic day slate
+(Thanksgiving, Saturdays) — and on Monday each game also gets a showdown. The week rolls
+over at 6am ET the morning after its last game is final. Each slate's uploads and picks
+live in `data/slates/<sid>/` (sid like `2026-2-5-main`, `2026-2-5-g-BAL-ATL`); the upload
+also stores the slate's label/week so `/api/slates` can list past weeks. No sid means
+the original single-slot files, used only when the schedule can't load.
+
 **Times are pinned to US Central** regardless of server locale. ESPN reports Eastern.
 
 ## Deployment

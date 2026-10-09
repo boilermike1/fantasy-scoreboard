@@ -151,3 +151,86 @@ function normName(n) {
   return String(n).toLowerCase().replace(/[.'\-]/g, "")
     .replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/\s+/g, " ").trim();
 }
+
+// ---- DFS slates for the optimizer tabs ----
+// Eastern calendar date (YYYY-MM-DD), weekday and hour of a moment
+function etParts(d) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+    weekday: "short", hour: "numeric", hour12: false,
+  }).formatToParts(d).map((x) => [x.type, x.value]));
+  return { ymd: `${p.year}-${p.month}-${p.day}`, day: p.weekday, hour: Number(p.hour) % 24 };
+}
+const addDay = (ymd) => new Date(Date.parse(ymd + "T12:00:00Z") + 864e5).toISOString().slice(0, 10);
+
+// The week whose slates to show. Rolls to next week at 6am Eastern the morning after
+// the last game is final (Tuesday after MNF), whatever ESPN's own week says.
+async function dfsWeek() {
+  let raw = await espnJson(ESPN_SB);
+  const events = raw.events || [];
+  const allFinal = events.length && events.every((e) => e.competitions?.[0]?.status?.type?.state === "post");
+  if (allFinal) {
+    const last = etParts(new Date(Math.max(...events.map((e) => Date.parse(e.date)))));
+    const now = etParts(new Date());
+    if (now.ymd > addDay(last.ymd) || (now.ymd > last.ymd && now.hour >= 6)) {
+      let type = raw.season?.type, week = (raw.week?.number || 0) + 1;
+      if (type === 2 && week > 18) { type = 3; week = 1; }
+      try {
+        const next = await espnJson(`${ESPN_SB}?dates=${raw.season.year}&seasontype=${type}&week=${week}`);
+        if ((next.events || []).length) raw = next;
+      } catch { /* keep the finished week */ }
+    }
+  }
+  const games = (raw.events || []).map((e) => {
+    const sides = {};
+    ((e.competitions || [{}])[0].competitors || []).forEach((c) => { sides[c.homeAway] = c; });
+    if (!sides.home || !sides.away) return null;
+    return { away: fixTeam(sides.away.team?.abbreviation), home: fixTeam(sides.home.team?.abbreviation),
+             start: e.date };
+  }).filter((g) => g && g.start);
+  return { season: raw.season?.year, type: raw.season?.type, week: raw.week?.number, games };
+}
+
+// Rules (Eastern time):
+//   Sunday 12pm-6pm kickoffs        -> Main slate (classic)
+//   other Sunday games              -> showdown each (international morning, SNF)
+//   any other day with 1 game       -> showdown (TNF, MNF, Black Friday...)
+//   any other day with 2+ games     -> one classic slate for the day (Thanksgiving, Saturdays)
+//   ...and on Monday, a showdown for each game as well (MNF doubleheaders)
+function dfsSlates(wk) {
+  const weekLabel = wk.type === 3 ? `Playoffs wk ${wk.week}` : wk.type === 1 ? `Preseason wk ${wk.week}` : `Week ${wk.week}`;
+  const base = { season: wk.season, type: wk.type, week: wk.week, week_label: weekLabel };
+  const prefix = `${wk.season}-${wk.type}-${wk.week}`;
+  const days = {};
+  wk.games.forEach((g) => {
+    const et = etParts(new Date(g.start));
+    (days[et.ymd] ||= { day: et.day, games: [] }).games.push({ ...g, hour: et.hour });
+  });
+  const teamsOf = (gs) => [...new Set(gs.flatMap((g) => [g.away, g.home]))].sort();
+  const when = (iso) => new Date(iso).toLocaleString("en-US", { ...CENTRAL, weekday: "short", month: "numeric",
+                                                                 day: "numeric", hour: "numeric", minute: "2-digit" });
+  const showdown = (g, tag) => ({ ...base, sid: `${prefix}-g-${g.away}-${g.home}`, kind: "showdown",
+                                  label: `${tag} ${g.away}@${g.home}`, teams: [g.away, g.home].sort(),
+                                  start: g.start, detail: when(g.start) });
+  const out = [];
+  Object.entries(days).forEach(([ymd, { day, games }]) => {
+    games.sort((a, b) => a.start.localeCompare(b.start));
+    if (day === "Sun") {
+      const main = games.filter((g) => g.hour >= 12 && g.hour <= 18);
+      if (main.length) out.push({ ...base, sid: `${prefix}-main`, kind: "classic", label: "Main slate",
+                                  teams: teamsOf(main), start: main[0].start,
+                                  detail: `${main.length} games · from ${when(main[0].start)}` });
+      games.filter((g) => !main.includes(g)).forEach((g) => out.push(showdown(g, g.hour >= 19 ? "SNF" : "Sun")));
+    } else if (games.length === 1) {
+      out.push(showdown(games[0], { Thu: "TNF", Mon: "MNF" }[day] || day));
+    } else {
+      out.push({ ...base, sid: `${prefix}-day-${ymd}`, kind: "classic", label: `${day} slate`,
+                 teams: teamsOf(games), start: games[0].start,
+                 detail: `${games.length} games · from ${when(games[0].start)}` });
+      if (day === "Mon") games.forEach((g) => out.push(showdown(g, "MNF")));
+    }
+  });
+  out.sort((a, b) => a.start.localeCompare(b.start) || (a.kind === "classic" ? -1 : 1));
+  out.forEach((s, i) => { s.order = i; });
+  return out;
+}

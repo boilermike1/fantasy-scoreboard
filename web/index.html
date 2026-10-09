@@ -13,14 +13,15 @@
     <button class="tab active" data-tab="live">Live</button>
     <button class="tab" data-tab="scoreboard">Scoreboard</button>
     <button class="tab" data-tab="settings">Settings</button>
-    <button class="tab" data-tab="optimizer">Main Slate</button>
-    <button class="tab" data-tab="showdown">Showdown</button>
+    <span id="slateTabs" class="slatetabs"></span>
+    <select id="slateWeek" class="slateweek hidden" title="Slates from past weeks"></select>
   </nav>
   <a class="logout" href="/logout">Log out</a>
 </header>
 
 <main id="optimizer" class="panel">
   <aside class="controls">
+    <div id="optSlate" class="slatehdr hidden"></div>
     <section>
       <h2>Projections</h2>
       <label class="filebtn">Upload projections CSV<input type="file" id="projFile" accept=".csv"></label>
@@ -73,6 +74,7 @@ Jameson Williams
 
 <main id="showdown" class="panel">
   <aside class="controls">
+    <div id="sdSlate" class="slatehdr hidden"></div>
     <section>
       <h2>Showdown projections</h2>
       <label class="filebtn">Upload showdown CSV<input type="file" id="sdFile" accept=".csv"></label>

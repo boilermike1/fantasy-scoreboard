@@ -6,14 +6,15 @@ const state = {
 };
 
 // ---- tabs ----
-document.querySelectorAll(".tab").forEach((b) =>
-  b.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-    b.classList.add("active");
-    $(b.dataset.tab).classList.add("active");
-  })
-);
+// Delegated, because the slate tabs are rebuilt from the schedule each week
+document.querySelector("nav").addEventListener("click", (e) => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+  document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+  b.classList.add("active");
+  $(b.dataset.tab).classList.add("active");
+  if (b.dataset.slate !== undefined) openSlate(shownSlates[Number(b.dataset.slate)]);
+});
 
 // ---- helpers ----
 async function api(path, opts = {}) {
@@ -79,15 +80,98 @@ function renderChipList(key, cls, elId, onChange) {
 }
 
 // ================================================================ main slate ====
+// ---- slate tabs: one per DFS slate this week, each with its own uploads and picks ----
+let currentSlate = null, shownSlates = [], thisWeekSlates = [], pastWeeks = new Map();
+const sidQS = () => (currentSlate ? `?sid=${encodeURIComponent(currentSlate.sid)}` : "");
+const weekKey = (s) => `${s.season}-${s.type}-${s.week}`;
+function withInfo(fd) {
+  if (currentSlate && currentSlate.sid !== "default") fd.append("info", JSON.stringify(currentSlate));
+  return fd;
+}
+
+// Without a schedule (ESPN down, offseason) fall back to the original single slots
+const FALLBACK_SLATES = [{ sid: "default", kind: "classic", label: "Main Slate" },
+                         { sid: "default", kind: "showdown", label: "Showdown" }];
+
+async function buildSlateTabs() {
+  let list = [];
+  try { list = dfsSlates(await dfsWeek()); } catch { /* fall back below */ }
+  let stored = [];
+  try { stored = (await api("/api/slates")).slates || []; } catch { /* none yet */ }
+
+  const cur = list.length ? weekKey(list[0]) : null;
+  pastWeeks = new Map();
+  stored.forEach((s) => {
+    const k = weekKey(s);
+    // a game the league moved (flexed) keeps its uploads visible under this week
+    if (k === cur) { if (!list.some((x) => x.sid === s.sid)) list.push(s); return; }
+    if (!pastWeeks.has(k)) pastWeeks.set(k, { label: `${s.season} ${s.week_label || "week " + s.week}`, slates: [] });
+    pastWeeks.get(k).slates.push(s);
+  });
+  pastWeeks.forEach((w) => w.slates.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+  thisWeekSlates = list.length ? list : FALLBACK_SLATES;
+
+  const sel = $("slateWeek");
+  sel.innerHTML = `<option value="">${esc(list.length ? "This week · " + list[0].week_label : "This week")}</option>` +
+    [...pastWeeks].map(([k, w]) => `<option value="${esc(k)}">${esc(w.label)}</option>`).join("");
+  sel.classList.toggle("hidden", !pastWeeks.size);
+  renderSlateTabs(thisWeekSlates);
+}
+
+function renderSlateTabs(list) {
+  const wasOpen = !!document.querySelector(".tab.active[data-slate]");
+  shownSlates = list;
+  $("slateTabs").innerHTML = list.map((s, i) =>
+    `<button class="tab" data-tab="${s.kind === "showdown" ? "showdown" : "optimizer"}" data-slate="${i}"
+       title="${esc(s.detail || "")}">${esc(s.label)}</button>`).join("");
+  if (wasOpen) $("slateTabs").querySelector(".tab")?.click();
+}
+
+$("slateWeek").addEventListener("change", (e) => {
+  const w = pastWeeks.get(e.target.value);
+  renderSlateTabs(w ? w.slates : thisWeekSlates);
+});
+
+function clearResults() {
+  state.lineups = []; state.sdLineups = [];
+  $("lineups").innerHTML = ""; $("error").innerHTML = "";
+  $("toolbar").classList.add("hidden"); $("empty").classList.remove("hidden");
+  $("sdLineups").innerHTML = ""; $("sdError").innerHTML = "";
+  $("sdToolbar").classList.add("hidden"); $("sdEmpty").classList.remove("hidden");
+  setStatus($("runStatus"), ""); setStatus($("sdRunStatus"), "");
+}
+
+function openSlate(s) {
+  if (!s || s === currentSlate) return;
+  currentSlate = s;
+  clearResults();
+  const hdr = s.kind === "showdown" ? $("sdSlate") : $("optSlate");
+  hdr.innerHTML = `<b>${esc(s.label)}</b><span>${esc([s.week_label, s.detail].filter(Boolean).join(" · "))}</span>`;
+  hdr.classList.toggle("hidden", s.sid === "default");
+  loadState().catch((e) => setStatus($(s.kind === "showdown" ? "sdStatus" : "projStatus"), e.message, "err"));
+}
+
+// A file whose teams barely overlap the slate's was probably meant for another tab.
+// Loose on purpose: ETR and ESPN don't always spell team abbreviations the same way.
+function slateMismatch(fileTeams) {
+  const want = currentSlate && currentSlate.teams;
+  if (!want || !fileTeams || !fileTeams.length) return "";
+  const hit = want.filter((t) => fileTeams.includes(t)).length;
+  return hit * 2 < want.length ? ` · check this file — it has ${fileTeams.join(", ")}, this slate is ${want.join(", ")}` : "";
+}
+
 async function loadState() {
   if (PUBLIC_MODE) return;
-  const s = await api("/api/state");
+  const sid = currentSlate && currentSlate.sid;
+  const s = await api(`/api/state${sidQS()}`);
+  if ((currentSlate && currentSlate.sid) !== sid) return;   // switched tabs mid-load
   state.players = s.players || [];
   state.include = (s.picks && s.picks.include) || [];
   state.exclude = (s.picks && s.picks.exclude) || [];
   renderChips();
 
-  if (s.projections) setStatus($("projStatus"), `${s.projections.filename} · ${s.projections.players} players · ${s.projections.uploaded_at}`, "ok");
+  const projWarn = slateMismatch(s.teams);
+  if (s.projections) setStatus($("projStatus"), `${s.projections.filename} · ${s.projections.players} players · ${s.projections.uploaded_at}${projWarn}`, projWarn ? "err" : "ok");
   else setStatus($("projStatus"), "No projections loaded");
   if (s.top_plays) setStatus($("tpStatus"), `${s.top_plays.count} top plays loaded · ${s.top_plays.uploaded_at}`, "ok");
   else setStatus($("tpStatus"), "No top plays loaded");
@@ -102,7 +186,8 @@ async function loadState() {
   if (s.showdown_error) setStatus($("sdStatus"), s.showdown_error, "err");
   else if (s.showdown && s.showdown.teams) {
     const skip = s.showdown.skipped ? ` · ${s.showdown.skipped} skipped (no projection)` : "";
-    setStatus($("sdStatus"), `${s.showdown.teams.join(" vs ")} · ${s.showdown.players} players${skip} · ${s.showdown.uploaded_at}`, "ok");
+    const sdWarn = slateMismatch(s.showdown.teams);
+    setStatus($("sdStatus"), `${s.showdown.teams.join(" vs ")} · ${s.showdown.players} players${skip} · ${s.showdown.uploaded_at}${sdWarn}`, sdWarn ? "err" : "ok");
   }
   else setStatus($("sdStatus"), "No showdown slate loaded");
   $("sdRun").disabled = !state.sdPlayers.length;
@@ -112,7 +197,7 @@ $("projFile").addEventListener("change", async (e) => {
   const f = e.target.files[0]; if (!f) return;
   const fd = new FormData(); fd.append("file", f);
   setStatus($("projStatus"), "Uploading…");
-  try { await api("/api/upload/projections", { method: "POST", body: fd }); await loadState(); }
+  try { await api(`/api/upload/projections${sidQS()}`, { method: "POST", body: withInfo(fd) }); await loadState(); }
   catch (err) { setStatus($("projStatus"), err.message, "err"); }
   e.target.value = "";
 });
@@ -120,7 +205,7 @@ $("projFile").addEventListener("change", async (e) => {
 async function saveTopPlays(fd) {
   setStatus($("tpStatus"), "Saving…");
   try {
-    const r = await api("/api/upload/top_plays", { method: "POST", body: fd });
+    const r = await api(`/api/upload/top_plays${sidQS()}`, { method: "POST", body: withInfo(fd) });
     await loadState();
     const rep = r.report;
     if (r.picks) setStatus($("tpStatus"), $("tpStatus").textContent + ` · ${r.picks.include.length} included, ${r.picks.exclude.length} excluded`, "ok");
@@ -140,10 +225,10 @@ $("tpSave").addEventListener("click", () => {
   const t = $("tpText").value.trim(); if (!t) return;
   const fd = new FormData(); fd.append("text", t); saveTopPlays(fd); $("tpText").value = "";
 });
-$("tpClear").addEventListener("click", async () => { await api("/api/top_plays", { method: "DELETE" }); await loadState(); });
+$("tpClear").addEventListener("click", async () => { await api(`/api/top_plays${sidQS()}`, { method: "DELETE" }); await loadState(); });
 
 function savePicks() {
-  api("/api/picks", { method: "POST", headers: { "Content-Type": "application/json" },
+  api(`/api/picks${sidQS()}`, { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ include: state.include, exclude: state.exclude }) }).catch(() => {});
 }
 function renderChips() {
@@ -161,7 +246,9 @@ $("run").addEventListener("click", async () => {
   $("run").disabled = true; setStatus($("runStatus"), "Solving…"); $("error").innerHTML = "";
   try {
     const body = { n_lineups: 10, include: state.include, exclude: state.exclude };
-    const r = await api("/api/optimize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const sid = currentSlate && currentSlate.sid;
+    const r = await api(`/api/optimize${sidQS()}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if ((currentSlate && currentSlate.sid) !== sid) { $("run").disabled = false; return; }
     state.lineups = r.lineups;
     $("empty").classList.add("hidden"); $("toolbar").classList.remove("hidden");
     if (r.warnings?.length) $("error").innerHTML = r.warnings.map((x) => `<div class="warn">${esc(x)}</div>`).join("");
@@ -197,13 +284,13 @@ $("sdFile").addEventListener("change", async (e) => {
   const f = e.target.files[0]; if (!f) return;
   const fd = new FormData(); fd.append("file", f);
   setStatus($("sdStatus"), "Uploading…");
-  try { await api("/api/showdown/upload", { method: "POST", body: fd }); await loadState(); }
+  try { await api(`/api/showdown/upload${sidQS()}`, { method: "POST", body: withInfo(fd) }); await loadState(); }
   catch (err) { setStatus($("sdStatus"), err.message, "err"); }
   e.target.value = "";
 });
 
 function saveSdPicks() {
-  api("/api/showdown/picks", { method: "POST", headers: { "Content-Type": "application/json" },
+  api(`/api/showdown/picks${sidQS()}`, { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ include: state.sdInclude, exclude: state.sdExclude,
                            captain_pool: state.sdCaptainPool, captain_exclude: state.sdCaptainExclude }) }).catch(() => {});
 }
@@ -230,7 +317,9 @@ $("sdRun").addEventListener("click", async () => {
   try {
     const body = { n_lineups: 10, include: state.sdInclude, exclude: state.sdExclude,
                    captain_pool: state.sdCaptainPool, captain_exclude: state.sdCaptainExclude };
-    const r = await api("/api/showdown/optimize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const sid = currentSlate && currentSlate.sid;
+    const r = await api(`/api/showdown/optimize${sidQS()}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if ((currentSlate && currentSlate.sid) !== sid) { $("sdRun").disabled = false; return; }
     state.sdLineups = r.lineups;
     $("sdEmpty").classList.add("hidden"); $("sdToolbar").classList.remove("hidden");
     $("sdSummary").textContent = `${r.lineups.length} lineups`;
@@ -258,13 +347,11 @@ $("sdDownload").addEventListener("click", () => download("/api/showdown/export",
 
 if (PUBLIC_MODE) {
   // public scoreboard: Live + Scoreboard only, nothing that needs a login
-  ["optimizer", "showdown"].forEach((id) => {
-    document.querySelector(`.tab[data-tab="${id}"]`)?.remove();
-    $(id)?.remove();
-  });
+  ["optimizer", "showdown", "slateTabs", "slateWeek"].forEach((id) => $(id)?.remove());
   document.querySelector(".logout")?.remove();   // nothing to log out of
 } else {
-  loadState().catch((e) => setStatus($("projStatus"), e.message, "err"));
+  $("run").disabled = true; $("sdRun").disabled = true;   // until a slate tab is opened
+  buildSlateTabs();
 }
 
 // ================================================================ live ====
