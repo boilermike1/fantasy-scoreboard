@@ -153,7 +153,7 @@ Defined in `SCORING` at the top of `core/live.py` — edit that dict to add or c
 | System | Pass yd | Pass TD | Reception | INT / fumble lost | Yardage bonuses |
 |---|---|---|---|---|---|
 | DraftKings | 1 per 25 (0.04) | 4 | 1 | −1 | 100 rush / 100 rec / 300 pass = +3 |
-| PPR | 1 per 25 (0.04) | 4 | 1 | −1 | none |
+| PPR | 1 per 25 (0.04) | 4 | 1 | −2 | none |
 | Half PPR | 1 per 25 (0.04) | 4 | 0.5 | −2 | none |
 | Standard | 1 per 25 (0.04) | 4 | 0 | −2 | none |
 | Fan Free Zone | 1 per 20 (0.05) | 6 | 1 | −2 | none |

@@ -59,7 +59,7 @@ TURNOVERS_2 = {"pass_int": -2, "fum_lost": -2}
 
 SCORING = {
     "dk":  _system("DraftKings"),
-    "ppr": _system("PPR", bonuses=False),
+    "ppr": _system("PPR", offense=TURNOVERS_2, bonuses=False),
     "half": _system("Half PPR", offense={"rec": 0.5, **TURNOVERS_2}, bonuses=False),
     "std": _system("Standard", offense={"rec": 0, **TURNOVERS_2}, bonuses=False),
     "ffz": _system("Fan Free Zone", offense={"pass_yd": 0.05, "pass_td": 6, **TURNOVERS_2},
