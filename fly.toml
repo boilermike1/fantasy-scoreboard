@@ -7,9 +7,6 @@ app = 'fantasy-scoreboard'
 primary_region = 'ord'
 
 [build]
-[env]
-  DFS_MODE = 'scoreboard'
-
 [http_service]
   internal_port = 8080
   force_https = true
