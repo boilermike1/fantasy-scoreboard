@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Fantasy Scoreboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -52,6 +53,14 @@
     </div>
 
     <div class="card setcard">
+      <div class="head"><span class="title">Scoring systems</span></div>
+      <div class="setbody">
+        <p class="hint2">Choose which systems appear in the Scoring menu. Stored in this browser only.</p>
+        <div id="setScoring" class="scoringlist"></div>
+      </div>
+    </div>
+
+    <div class="card setcard">
       <div class="head"><span class="title">DraftKings salaries</span></div>
       <div class="setbody">
         <p class="hint2">Upload the salary file from a DraftKings contest
@@ -76,10 +85,10 @@
         <label class="inlinelabel">Week
           <select id="liveWeek"></select>
         </label>
-        <label class="inlinelabel" id="liveSlateWrap">Slate <select id="liveSlate"></select></label>
         <label class="inlinelabel">Scoring
           <select id="liveScoring"></select>
         </label>
+        <label class="inlinelabel hidden" id="liveSlateWrap">Slate <select id="liveSlate"></select></label>
         <label class="inlinelabel hidden" id="liveTeamWrap">My team <select id="liveTeam"></select></label>
         <label class="check"><input type="checkbox" id="liveAuto" checked> Auto-refresh</label><span id="liveAutoNote" class="autonote"></span>
         <button id="liveRefresh" class="small">Refresh now</button>

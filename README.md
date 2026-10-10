@@ -59,11 +59,16 @@ score: QB/RB/WR/TE, K and DST for both teams, grouped by position and sorted by 
 
 While a game is in progress its card also shows possession (a green arrow beside the team with the
 ball), down and distance, the ball spot, and the last play; opening it adds a situation banner (red
-when inside the 20) and the **last five plays**, newest first, with scoring plays highlighted. Plays
-come from ESPN's game-summary feed, cached 15 seconds.
+when inside the 20) and the **last five plays**, newest first, with scoring plays highlighted;
+**Show all plays** expands to the whole game. A finished game offers its full **play log** from
+kickoff instead, fetched once and kept for the visit. Plays come from ESPN's game-summary feed.
+
+While a box score is open, the week's other games sit in a narrow column on the right (a swipeable
+strip on phones); click one to jump to it.
 
 The **Scoring** menu is shared with the Live tab — changing it in either place updates both and is
-remembered per browser.
+remembered per browser. On the Live tab the **Slate** menu sits to its right and only appears under
+DraftKings scoring; every other system shows the whole week.
 
 Scores and clock come from ESPN's public scoreboard feed; the per-player fantasy numbers come from the
 same Sleeper stat line the Live tab uses, so a player's points match in both places. ESPN and Sleeper
@@ -112,6 +117,8 @@ Per-visitor, stored in that browser only (so two people using the site at once d
 - **Sleeper leagues** — enter a Sleeper username, tick which leagues appear in the Scoring menu, and
   pick your team in each. Scoring keys are `league:<league_id>`; a visitor's leagues are passed to the
   API per request, and the Scoring menu only ever lists the base systems plus that visitor's own.
+- **Scoring systems** — untick systems to hide them from the Scoring menu. Stored as the *hidden* list,
+  so a newly added system or league shows by default; at least one must stay ticked.
 - `SLEEPER_LEAGUE_ID` / `SLEEPER_USER_ID` remain the default for a visitor who hasn't chosen anything.
 
 Server-side and shared by everyone:
@@ -143,12 +150,14 @@ and the Captain-mode solver on a single game. It updates with the 30-second refr
 
 Defined in `SCORING` at the top of `core/live.py` — edit that dict to add or change one.
 
-| System | Pass yd | Pass TD | Yardage bonuses |
-|---|---|---|---|
-| DraftKings | 1 per 25 (0.04) | 4 | 100 rush / 100 rec / 300 pass = +3 |
-| PPR | 1 per 25 (0.04) | 4 | none |
-| Fan Free Zone | 1 per 20 (0.05) | 6 | none |
-| *(your Sleeper league)* | pulled from the league | pulled from the league | pulled from the league |
+| System | Pass yd | Pass TD | Reception | INT / fumble lost | Yardage bonuses |
+|---|---|---|---|---|---|
+| DraftKings | 1 per 25 (0.04) | 4 | 1 | −1 | 100 rush / 100 rec / 300 pass = +3 |
+| PPR | 1 per 25 (0.04) | 4 | 1 | −1 | none |
+| Half PPR | 1 per 25 (0.04) | 4 | 0.5 | −2 | none |
+| Standard | 1 per 25 (0.04) | 4 | 0 | −2 | none |
+| Fan Free Zone | 1 per 20 (0.05) | 6 | 1 | −2 | none |
+| *(your Sleeper league)* | pulled from the league | | | | |
 
 ### Sleeper league mode
 

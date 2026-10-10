@@ -55,13 +55,18 @@ def _system(label, offense=None, dst=None, kicker=None, bonuses=True, pts_allow=
             "bonuses": bonuses, "pts_allow": pts_allow or PTS_ALLOW}
 
 
+TURNOVERS_2 = {"pass_int": -2, "fum_lost": -2}
+
 SCORING = {
     "dk":  _system("DraftKings"),
     "ppr": _system("PPR", bonuses=False),
-    "ffz": _system("Fan Free Zone", offense={"pass_yd": 0.05, "pass_td": 6}, bonuses=False),
+    "half": _system("Half PPR", offense={"rec": 0.5, **TURNOVERS_2}, bonuses=False),
+    "std": _system("Standard", offense={"rec": 0, **TURNOVERS_2}, bonuses=False),
+    "ffz": _system("Fan Free Zone", offense={"pass_yd": 0.05, "pass_td": 6, **TURNOVERS_2},
+                   bonuses=False),
 }
 DEFAULT_SCORING = "dk"
-BASE_KEYS = ("dk", "ppr", "ffz")
+BASE_KEYS = ("dk", "ppr", "half", "std", "ffz")
 _stats_cache = {}            # (season, week) -> (fetched_at, payload)
 _sched_cache = {}            # season -> (fetched_at, payload)
 SCHED_TTL = 60               # game status changes during the day
@@ -198,8 +203,9 @@ def _statline(s, pos):
         if g("fgm"): bits.append(f"{g('fgm'):.0f}/{g('fga'):.0f} FG")
         if g("xpm"): bits.append(f"{g('xpm'):.0f} XP")
         return ", ".join(bits)
-    if g("pass_yd") or g("pass_td"):
-        bits.append(f"{g('pass_yd'):.0f} pass yd, {g('pass_td'):.0f} TD" + (f", {g('pass_int'):.0f} INT" if g("pass_int") else ""))
+    if g("pass_att") or g("pass_yd") or g("pass_td"):
+        att = f"{g('pass_cmp'):.0f}/{g('pass_att'):.0f}, " if g("pass_att") else ""
+        bits.append(f"{att}{g('pass_yd'):.0f} pass yd, {g('pass_td'):.0f} TD" + (f", {g('pass_int'):.0f} INT" if g("pass_int") else ""))
     if g("rush_att") or g("rush_yd") or g("rush_td"):
         car = f"{g('rush_att'):.0f} car, " if g("rush_att") else ""
         bits.append(f"{car}{g('rush_yd'):.0f} rush yd" + (f", {g('rush_td'):.0f} TD" if g("rush_td") else ""))

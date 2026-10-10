@@ -126,7 +126,7 @@ async function espnGameDetail(gameId, startIso) {
     if (seen.has(id)) return;
     seen.add(id); plays.push(p);
   }));
-  const last = plays.slice(-5).map((p) => ({
+  const log = plays.map((p) => ({
     clock: p.clock?.displayValue || "", period: p.period?.number,
     text: p.text || "", team: byId[String(p.start?.team?.id || "")] || "",
     down: p.start?.shortDownDistanceText || "", scoring: !!p.scoringPlay,
@@ -143,7 +143,7 @@ async function espnGameDetail(gameId, startIso) {
     const name = item.athlete?.displayName;
     if (name) injuries[normName(name)] = { status: item.status, detail: (item.details?.type || "").trim() };
   }));
-  return { plays: last, injuries };
+  return { plays: log, injuries };
 }
 
 // must match core/loader.py _norm so names line up with the server's rows

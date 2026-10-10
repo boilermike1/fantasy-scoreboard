@@ -202,3 +202,30 @@ border-radius:8px;padding:8px 12px;font-size:13px}
 .gamelist{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
 .gamechip{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:3px 8px;
 font-size:11px;color:var(--muted)}
+
+/* play log toggle */
+.plays .head button{margin-left:auto}
+.playlist.all{max-height:520px;overflow-y:auto}
+.pq{padding:5px 12px;font-size:11px;font-weight:700;color:var(--muted);background:#12161c;border-bottom:1px solid #20252d;position:sticky;top:0}
+
+/* scoring systems in Settings */
+.scoringlist{display:flex;flex-wrap:wrap;gap:6px 18px}
+
+/* other games beside an open box score */
+.boxwrap{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:14px;align-items:start}
+.boxmain{min-width:0}
+.sidegames{display:flex;flex-direction:column;gap:6px;position:sticky;top:64px;max-height:calc(100vh - 80px);overflow-y:auto}
+.sgame{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;cursor:pointer;font-size:12px}
+.sgame:hover{border-color:#3c4654;background:#1b2029}
+.sgame .sgstatus{display:flex;align-items:center;font-size:10px;color:var(--muted);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sgame.inprog .sgstatus{color:var(--green);font-weight:600}
+.sgrow{display:flex;align-items:center;gap:6px;line-height:1.5}
+.sgrow img{width:16px;height:16px;object-fit:contain}
+.sgrow b{margin-left:auto;font-variant-numeric:tabular-nums}
+.sgrow.lost{color:var(--muted)}
+.sgrow.lost b{font-weight:400}
+@media (max-width:900px){
+  .boxwrap{grid-template-columns:1fr}
+  .sidegames{order:-1;position:static;flex-direction:row;overflow-x:auto;max-height:none;padding-bottom:4px}
+  .sgame{flex:0 0 130px}
+}

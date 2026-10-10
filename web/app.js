@@ -75,6 +75,31 @@ function prefSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ }
 }
 
+// Scoring systems the visitor has hidden in Settings. Hidden, not shown, so a system
+// added later (a new league, a new base system) appears by default.
+let allScoringOpts = [];
+const hiddenScoring = () => prefGet("settings.hidden_scoring", []) || [];
+function visibleScoring(opts) {
+  const off = hiddenScoring();
+  const on = opts.filter((o) => !off.includes(o.key));
+  return on.length ? on : opts;
+}
+// fill a Scoring <select> with the visible systems, keeping the saved choice when it's still there
+function fillScoring(sel, opts) {
+  const vis = visibleScoring(opts);
+  const sig = vis.map((o) => o.key).join("|");
+  if (sel.dataset.sig === sig) return;
+  sel.dataset.sig = sig;
+  const want = prefGet("live.scoring", "dk");
+  sel.innerHTML = vis.map((o) => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("");
+  sel.value = vis.some((o) => o.key === want) ? want : vis[0].key;
+}
+const currentScoring = () => {
+  const want = prefGet("live.scoring", "dk");
+  const vis = visibleScoring(allScoringOpts);
+  return !vis.length || vis.some((o) => o.key === want) ? want : vis[0].key;
+};
+
 // Store which positions are HIDDEN, not which are shown: a position added later
 // (ALL, when a single game is picked) is then visible by default instead of filtered out.
 function visiblePositions(all) {
@@ -185,7 +210,7 @@ async function loadLive() {
   liveLoading = true;
   try {
     const wk = $("liveWeek").value;
-    const scoring = $("liveScoring").value || prefGet("live.scoring", "dk");
+    const scoring = $("liveScoring").value || currentScoring();
     await syncTeamPickers(scoring);
 
     // ESPN needs a concrete season/week, so learn those before asking it
@@ -213,7 +238,7 @@ async function loadLive() {
     const lid = scoring.startsWith("league:") ? scoring.slice(7) : "";
     if (lid && myTeamFor(lid)) qs.set("my_team", myTeamFor(lid));
     if (wk) qs.set("week", wk);
-    const slateKey = $("liveSlate").value || "all";
+    const slateKey = scoring === "dk" ? ($("liveSlate").value || "all") : "all";
     const chosenSlate = slates.find((x) => x.key === slateKey);
     if (chosenSlate && chosenSlate.teams) {
       qs.set("slate", slateKey);
@@ -233,14 +258,9 @@ async function loadLive() {
     $("liveError").innerHTML = "";
 
     // rebuild when the set of systems changes (leagues added or removed in Settings)
-    const sig = r.scoring_options.map((o) => o.key).join("|");
-    if ($("liveScoring").dataset.sig !== sig) {
-      $("liveScoring").dataset.sig = sig;
-      const want = prefGet("live.scoring", "dk");
-      $("liveScoring").innerHTML = r.scoring_options.map((o) =>
-        `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("");
-      $("liveScoring").value = r.scoring_options.some((o) => o.key === want) ? want : r.scoring;
-    }
+    allScoringOpts = r.scoring_options;
+    fillScoring($("liveScoring"), allScoringOpts);
+    if ($("liveScoring").value !== r.scoring) { livePending = true; }   // choice was hidden; reload
     if (!$("liveWeek").options.length) {
       for (let w = r.current_week; w >= 1; w--) {
         const o = document.createElement("option");
@@ -260,7 +280,7 @@ async function loadLive() {
     }
 
     const slateOpts = r.slates || [];
-    $("liveSlateWrap").classList.toggle("hidden", !slateOpts.length);
+    $("liveSlateWrap").classList.toggle("hidden", !slateOpts.length || r.scoring !== "dk");
     const wantSlate = $("liveSlate").value || "all";
     const signature = slateOpts.map((x) => x.key).join("|");
     if ($("liveSlate").dataset.sig !== signature) {
@@ -342,7 +362,10 @@ function setScoringEverywhere(val) {
   if (liveData) loadLive();
   if (sbOpen) openBox(sbOpen.away, sbOpen.home);
 }
-$("liveScoring").addEventListener("change", () => setScoringEverywhere($("liveScoring").value));
+$("liveScoring").addEventListener("change", () => {
+  if ($("liveScoring").value !== "dk") $("liveSlate").value = "all";
+  setScoringEverywhere($("liveScoring").value);
+});
 $("liveWeek").addEventListener("change", () => { $("liveSlate").value = "all"; loadLive(); });
 $("liveSlate").addEventListener("change", loadLive);
 $("liveRefresh").addEventListener("click", loadLive);
@@ -352,12 +375,13 @@ document.querySelector('.tab[data-tab="live"]').addEventListener("click", () => 
 });
 
 // Live is the landing tab
-$("liveScoring").value = prefGet("live.scoring", "dk");
 loadLive();
 setLiveTimer();
 
 // ================================================================ scoreboard ====
 let sbTimer = null, sbLoading = false, sbPending = false, sbData = null, sbOpen = null;
+let sbBox = null, sbPlaysAll = false;
+const finalPlays = {};        // ESPN game id -> detail, for games already final
 
 async function loadScoreboard(keepDetail = true) {
   if (sbLoading) { sbPending = true; return; }
@@ -382,20 +406,13 @@ async function loadScoreboard(keepDetail = true) {
       }
       $("sbWeek").value = r.week;
     }
-    const liveOpts = (liveData && liveData.scoring_options) || r.scoring_options || [];
-    const sbSig = liveOpts.map((o) => o.key).join("|");
-    if (liveOpts.length && $("sbScoring").dataset.sig !== sbSig) {
-      $("sbScoring").dataset.sig = sbSig;
-      const want = prefGet("live.scoring", "dk");
-      $("sbScoring").innerHTML = liveOpts.map((o) =>
-        `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("");
-      $("sbScoring").value = liveOpts.some((o) => o.key === want) ? want : "dk";
-    }
+    const liveOpts = allScoringOpts.length ? allScoringOpts : (r.scoring_options || []);
+    if (liveOpts.length) fillScoring($("sbScoring"), liveOpts);
     const games = r.live_games ? ` · <b>${r.live_games}</b> in progress` : "";
     $("sbMeta").innerHTML = `<span class="live-dot ${Number(r.week) === Number(r.current_week) ? "" : "stale"}"></span>` +
       `${r.season} Week ${r.week} · ${r.games.length} games${games} · updated ${esc(r.updated_at)}`;
 
-    await syncTeamPickers(prefGet("live.scoring", "dk"));
+    await syncTeamPickers(currentScoring());
     renderGames();
     if (sbOpen && keepDetail) await openBox(sbOpen.away, sbOpen.home);
   } catch (err) {
@@ -435,8 +452,9 @@ function renderGames() {
 }
 
 async function openBox(away, home) {
+  if (!sbOpen || sbOpen.away !== away || sbOpen.home !== home) sbPlaysAll = false;
   sbOpen = { away, home };
-  const scoring = prefGet("live.scoring", "dk");
+  const scoring = currentScoring();
   const wk = $("sbWeek").value;
   try {
     await syncTeamPickers(scoring);
@@ -448,73 +466,127 @@ async function openBox(away, home) {
     const b = await api(`/api/boxscore?${qs}`);
     const g = (sbData?.games || []).find((x) => x.away === away && x.home === home) || {};
     b.game = { ...(b.game || {}), ...g };
-    if (g.state === "in" && g.id) {
+    if ((g.state === "in" || g.state === "post") && g.id) {
       try {
-        const extra = await espnGameDetail(g.id, g.start);
+        const extra = finalPlays[g.id] || await espnGameDetail(g.id, g.start);
+        if (g.state === "post") finalPlays[g.id] = extra;   // a final game's log won't change
         b.plays = extra.plays;
-        b.teams.forEach((side) => side.players.forEach((p) => {
+        if (g.state === "in") b.teams.forEach((side) => side.players.forEach((p) => {
           const hit = extra.injuries[normName(p.name)];
           if (hit) { p.injury = hit.status; p.injury_detail = hit.detail; }
         }));
       } catch { /* plays are a nicety */ }
     }
-
-    const table = (side) => {
-      let lastPos = null;
-      const rows = side.players.map((p) => {
-        const header = p.pos !== lastPos ? (lastPos = p.pos, `<tr class="posgroup"><td colspan="4">${p.pos}</td></tr>`) : "";
-        return `${header}<tr class="${p.mine ? "mine" : ""}">
-          <td class="av"><img class="avatar${p.pos === "DST" ? " logo" : ""}" loading="lazy" alt=""
-            src="${esc(p.img)}" data-fallback="${esc(p.team_img)}"></td>
-          <td>${esc(p.name)}${injTag(p)}${ownerTag(p)}${p.line ? `<div class="line">${esc(p.line)}</div>` : ""}</td>
-          <td class="num pts">${p.pts.toFixed(2)}</td>
-        </tr>`;
-      }).join("");
-      const logo = side.team === g.away ? g.away_logo : g.home_logo;
-      const score = side.team === g.away ? g.away_score : g.home_score;
-      return `<div class="card">
-        <div class="head"><span class="boxtitle"><img src="${esc(logo || "")}" alt="">
-          <span class="title" style="font-size:14px">${esc(side.team)}</span></span>
-          ${g.state && g.state !== "pre" ? `<span class="stat pts"><b>${score}</b></span>` : ""}</div>
-        ${side.players.length ? `<div class="cardbody"><table><tbody>${rows}</tbody></table></div>`
-          : `<div class="empty" style="padding:20px">No stats yet.</div>`}
-      </div>`;
-    };
-
-    $("sbGames").classList.add("hidden");
-    $("sbDetail").classList.remove("hidden");
-    const sit = (b.game && b.game.situation) || null;
-    const plays = b.plays || [];
-    $("sbDetail").innerHTML = `
-      <div class="boxhead">
-        <button id="sbBack" class="small">← All games</button>
-        <span class="score">${esc(away)} ${g.away_score ?? ""} @ ${esc(home)} ${g.home_score ?? ""}</span>
-        <span class="status muted">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.detail || "")} · ${esc(b.scoring_label)} scoring</span>
-      </div>
-      ${sit ? `<div class="card" style="margin-bottom:14px"><div class="head">
-          <span class="title">${esc(sit.possession || "")} ball</span>
-          ${sit.down_distance ? `<span class="stat"><b>${esc(sit.down_distance)}</b></span>` : ""}
-          ${sit.ball_on ? `<span class="stat">ball on <b>${esc(sit.ball_on)}</b></span>` : ""}
-          ${sit.red_zone ? `<span class="stat" style="color:var(--red)"><b>RED ZONE</b></span>` : ""}
-        </div></div>` : ""}
-      ${plays.length ? `<div class="card plays" style="margin-bottom:14px">
-          <div class="head"><span class="title">Last ${plays.length} plays</span></div>
-          ${plays.map((p) => `<div class="play ${p.scoring ? "score" : ""}">
-            <span class="pclock">${p.period ? `Q${p.period} ` : ""}${esc(p.clock || "")}</span>
-            <span class="ptm">${esc(p.team || "")}</span>
-            <span>${p.down ? `<span class="muted">${esc(p.down)}</span> ` : ""}${esc(p.text || "")}</span>
-          </div>`).join("")}
-        </div>` : ""}
-      <div class="two">${b.teams.map(table).join("")}</div>`;
-    $("sbBack").addEventListener("click", closeBox);
-    wireAvatarFallback($("sbDetail"));
+    sbBox = b;
+    renderBox();
   } catch (err) {
     $("sbError").innerHTML = `<div class="warn err">${esc(err.message)}</div>`;
   }
 }
 
+// Live games show the last few plays with a toggle for the rest; finished games keep
+// the whole log behind a button.
+const RECENT_PLAYS = 5;
+function playsCard(plays, state) {
+  if (!plays.length) return "";
+  const final = state === "post";
+  // plays arrive newest first; a finished game reads better from kickoff
+  const shown = sbPlaysAll ? (final ? [...plays].reverse() : plays) : final ? [] : plays.slice(0, RECENT_PLAYS);
+  const more = plays.length > shown.length;
+  const title = final ? "Play log" : sbPlaysAll ? `All ${plays.length} plays` : `Last ${shown.length} plays`;
+  const btn = final
+    ? `<button class="small ghost" data-plays>${sbPlaysAll ? "Hide play log" : `Show play log (${plays.length})`}</button>`
+    : more || sbPlaysAll
+      ? `<button class="small ghost" data-plays>${sbPlaysAll ? "Show last 5" : `Show all plays (${plays.length})`}</button>` : "";
+  let lastQ = null;
+  const rows = shown.map((p) => {
+    const qhdr = sbPlaysAll && p.period !== lastQ
+      ? (lastQ = p.period, `<div class="pq">${p.period > 4 ? "OT" : `Q${p.period}`}</div>`) : "";
+    return `${qhdr}<div class="play ${p.scoring ? "score" : ""}">
+      <span class="pclock">${p.period ? `Q${p.period} ` : ""}${esc(p.clock || "")}</span>
+      <span class="ptm">${esc(p.team || "")}</span>
+      <span>${p.down ? `<span class="muted">${esc(p.down)}</span> ` : ""}${esc(p.text || "")}</span>
+    </div>`;
+  }).join("");
+  return `<div class="card plays" style="margin-bottom:14px">
+    <div class="head"><span class="title">${title}</span>${btn}</div>
+    ${rows ? `<div class="playlist${sbPlaysAll ? " all" : ""}">${rows}</div>` : ""}
+  </div>`;
+}
+
+// the other games this week, down the right side while a box score is open
+function sideGames() {
+  const others = (sbData?.games || []).filter((x) => !(sbOpen && x.away === sbOpen.away && x.home === sbOpen.home));
+  if (!others.length) return "";
+  const line = (t, s, g, lost) => `<div class="sgrow ${lost ? "lost" : ""}">
+    <img src="${esc(LOGO(t))}" alt="" loading="lazy"><span>${esc(t)}</span>
+    <b>${g.state === "pre" ? "" : s}</b></div>`;
+  return `<aside class="sidegames">${others.map((g) => `
+    <div class="sgame ${g.state === "in" ? "inprog" : ""}" data-away="${esc(g.away)}" data-home="${esc(g.home)}">
+      <div class="sgstatus">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.detail)}</div>
+      ${line(g.away, g.away_score, g, g.state === "post" && g.away_score < g.home_score)}
+      ${line(g.home, g.home_score, g, g.state === "post" && g.home_score < g.away_score)}
+    </div>`).join("")}</aside>`;
+}
+
+function renderBox() {
+  const b = sbBox;
+  if (!b || !sbOpen) return;
+  const { away, home } = sbOpen;
+  const g = b.game || {};
+
+  const table = (side) => {
+    let lastPos = null;
+    const rows = side.players.map((p) => {
+      const header = p.pos !== lastPos ? (lastPos = p.pos, `<tr class="posgroup"><td colspan="4">${p.pos}</td></tr>`) : "";
+      return `${header}<tr class="${p.mine ? "mine" : ""}">
+        <td class="av"><img class="avatar${p.pos === "DST" ? " logo" : ""}" loading="lazy" alt=""
+          src="${esc(p.img)}" data-fallback="${esc(p.team_img)}"></td>
+        <td>${esc(p.name)}${injTag(p)}${ownerTag(p)}${p.line ? `<div class="line">${esc(p.line)}</div>` : ""}</td>
+        <td class="num pts">${p.pts.toFixed(2)}</td>
+      </tr>`;
+    }).join("");
+    const logo = side.team === g.away ? g.away_logo : g.home_logo;
+    const score = side.team === g.away ? g.away_score : g.home_score;
+    return `<div class="card">
+      <div class="head"><span class="boxtitle"><img src="${esc(logo || "")}" alt="">
+        <span class="title" style="font-size:14px">${esc(side.team)}</span></span>
+        ${g.state && g.state !== "pre" ? `<span class="stat pts"><b>${score}</b></span>` : ""}</div>
+      ${side.players.length ? `<div class="cardbody"><table><tbody>${rows}</tbody></table></div>`
+        : `<div class="empty" style="padding:20px">No stats yet.</div>`}
+    </div>`;
+  };
+
+  $("sbGames").classList.add("hidden");
+  $("sbDetail").classList.remove("hidden");
+  const sit = (b.game && b.game.situation) || null;
+  const plays = b.plays || [];
+  $("sbDetail").innerHTML = `<div class="boxwrap"><div class="boxmain">
+    <div class="boxhead">
+      <button id="sbBack" class="small">← All games</button>
+      <span class="score">${esc(away)} ${g.away_score ?? ""} @ ${esc(home)} ${g.home_score ?? ""}</span>
+      <span class="status muted">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.detail || "")} · ${esc(b.scoring_label)} scoring</span>
+    </div>
+    ${sit ? `<div class="card" style="margin-bottom:14px"><div class="head">
+        <span class="title">${esc(sit.possession || "")} ball</span>
+        ${sit.down_distance ? `<span class="stat"><b>${esc(sit.down_distance)}</b></span>` : ""}
+        ${sit.ball_on ? `<span class="stat">ball on <b>${esc(sit.ball_on)}</b></span>` : ""}
+        ${sit.red_zone ? `<span class="stat" style="color:var(--red)"><b>RED ZONE</b></span>` : ""}
+      </div></div>` : ""}
+    ${playsCard(plays, g.state)}
+    <div class="two">${b.teams.map(table).join("")}</div></div>${sideGames()}</div>`;
+  $("sbBack").addEventListener("click", closeBox);
+  $("sbDetail").querySelector("[data-plays]")?.addEventListener("click", () => {
+    sbPlaysAll = !sbPlaysAll; renderBox();
+  });
+  $("sbDetail").querySelectorAll(".sgame").forEach((el) => el.addEventListener("click", () => {
+    openBox(el.dataset.away, el.dataset.home); window.scrollTo({ top: 0 });
+  }));
+  wireAvatarFallback($("sbDetail"));
+}
+
 function closeBox() {
-  sbOpen = null;
+  sbOpen = null; sbBox = null;
   $("sbDetail").classList.add("hidden");
   $("sbDetail").innerHTML = "";
   $("sbGames").classList.remove("hidden");
@@ -613,7 +685,31 @@ async function renderLeagues() {
   });
 }
 
+function renderScoringSettings() {
+  if (!allScoringOpts.length) {
+    $("setScoring").innerHTML = `<div class="status muted">Loading…</div>`;
+    return;
+  }
+  const off = hiddenScoring();
+  $("setScoring").innerHTML = allScoringOpts.map((o) => `
+    <label class="check"><input type="checkbox" value="${esc(o.key)}" ${off.includes(o.key) ? "" : "checked"}> ${esc(o.label)}</label>`).join("");
+  $("setScoring").querySelectorAll("input").forEach((cb) => cb.addEventListener("change", () => {
+    const boxes = [...$("setScoring").querySelectorAll("input")];
+    if (!boxes.some((x) => x.checked)) { cb.checked = true; return; }   // keep at least one
+    const hidden = boxes.filter((x) => !x.checked).map((x) => x.value);
+    const keep = hiddenScoring().filter((k) => !allScoringOpts.some((o) => o.key === k));
+    prefSet("settings.hidden_scoring", [...keep, ...hidden]);
+    const pick = currentScoring();
+    prefSet("live.scoring", pick);
+    fillScoring($("liveScoring"), allScoringOpts);
+    if ($("sbScoring").options.length) fillScoring($("sbScoring"), allScoringOpts);
+    liveData = null;
+  }));
+}
+
 async function loadSettings() {
+  renderScoringSettings();
+  if (!allScoringOpts.length) loadLive().then(renderScoringSettings);
   const saved = prefGet("settings.sleeper_user", null);
   if (saved) {
     $("setSleeperUser").value = saved.name || "";
