@@ -212,6 +212,8 @@ def _statline(s, pos):
     if g("rec") or g("rec_yd") or g("rec_tgt"):
         tgt = f"/{g('rec_tgt'):.0f}" if g("rec_tgt") else ""
         bits.append(f"{g('rec'):.0f}{tgt} rec, {g('rec_yd'):.0f} yd" + (f", {g('rec_td'):.0f} TD" if g("rec_td") else ""))
+    if g("fum_lost"):
+        bits.append(f"{g('fum_lost'):.0f} fum lost")
     return " · ".join(bits)
 
 

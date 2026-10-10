@@ -505,7 +505,7 @@ function playsCard(plays, state) {
     return `${qhdr}<div class="play ${p.scoring ? "score" : ""}">
       <span class="pclock">${p.period ? `Q${p.period} ` : ""}${esc(p.clock || "")}</span>
       <span class="ptm">${esc(p.team || "")}</span>
-      <span>${p.down ? `<span class="muted">${esc(p.down)}</span> ` : ""}${esc(p.text || "")}</span>
+      <span>${p.down || p.spot ? `<span class="muted">${esc([p.down, p.spot].filter(Boolean).join(" at "))}</span> ` : ""}${esc(p.text || "")}</span>
     </div>`;
   }).join("");
   return `<div class="card plays" style="margin-bottom:14px">

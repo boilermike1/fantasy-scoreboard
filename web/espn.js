@@ -129,7 +129,8 @@ async function espnGameDetail(gameId, startIso) {
   const log = plays.map((p) => ({
     clock: p.clock?.displayValue || "", period: p.period?.number,
     text: p.text || "", team: byId[String(p.start?.team?.id || "")] || "",
-    down: p.start?.shortDownDistanceText || "", scoring: !!p.scoringPlay,
+    down: p.start?.shortDownDistanceText || "", spot: p.start?.possessionText || "",
+    scoring: !!p.scoringPlay,
   })).reverse();
 
   // only designations made after kickoff count as in-game injuries
