@@ -179,7 +179,16 @@ def boxscore(away: str, home: str, season: str = None, week: int = None, scoring
 
         league_id = sleeper_league.league_id_from_key(scoring)
         owners = sleeper_league.ownership(league_id, my_team) if league_id else None
-        return game_detail(season, week, away, home, scoring, owners)
+        box = game_detail(season, week, away, home, scoring, owners)
+        # DK salaries alongside DraftKings scoring, from DK's own (public) export only
+        table = dk_salaries.for_slate([away, home], allow_etr=False) if scoring == "dk" else None
+        if table:
+            for side in box["teams"]:
+                for p in side["players"]:
+                    hit = dk_salaries.lookup(table, p["name"], p["team"], p["pos"])
+                    p["sal"] = hit["sal"] if hit else None
+        box["salaries"] = bool(table)
+        return box
     except Exception as e:
         raise HTTPException(502, f"Could not load the box score: {e}")
 

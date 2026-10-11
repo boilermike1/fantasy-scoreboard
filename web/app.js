@@ -131,6 +131,10 @@ function renderPosBar(all, showOptimal) {
   if (opt) opt.addEventListener("change", () => { prefSet("live.optimal", opt.checked); loadLive(); });
 }
 
+// the Optimal lineup needs DK salaries, so it only exists under DraftKings scoring;
+// the preference is kept and the card returns when DraftKings is picked again
+const wantOptimal = () => prefGet("live.optimal", false) && ($("liveScoring").value || currentScoring()) === "dk";
+
 function optimalCard() {
   const o = liveData && liveData.optimal;
   if (!o) return "";
@@ -159,7 +163,7 @@ function optimalCard() {
 function renderBoard() {
   if (!liveData) return;
   const show = visiblePositions(liveData.positions);
-  const optCard = prefGet("live.optimal", false) ? optimalCard() : "";
+  const optCard = wantOptimal() && liveData.scoring === "dk" ? optimalCard() : "";
   if (!show.length) {
     $("liveBoard").innerHTML = optCard || `<div class="empty">No positions selected.</div>`;
     return;
@@ -245,7 +249,7 @@ async function loadLive() {
       qs.set("slate_teams", chosenSlate.teams.join(","));
       if (slateKey.startsWith("game:")) qs.set("single_game", "true");
     }
-    if (prefGet("live.optimal", false)) qs.set("optimal", "true");
+    if (wantOptimal()) qs.set("optimal", "true");
     const r = await api(`/api/live?${qs}`);
     if (!seasonMode) {
       r.slates = slates;
@@ -359,6 +363,7 @@ function setScoringEverywhere(val) {
   prefSet("live.scoring", val);
   if ($("liveScoring").options.length) $("liveScoring").value = val;
   if ($("sbScoring").options.length) $("sbScoring").value = val;
+  renderBoard();              // drops the Optimal card right away when leaving DraftKings
   if (liveData) loadLive();
   if (sbOpen) openBox(sbOpen.away, sbOpen.home);
 }
@@ -546,6 +551,7 @@ function renderBox() {
         <td class="av"><img class="avatar${p.pos === "DST" ? " logo" : ""}" loading="lazy" alt=""
           src="${esc(p.img)}" data-fallback="${esc(p.team_img)}"></td>
         <td>${esc(p.name)}${injTag(p)}${ownerTag(p)}${p.line ? `<div class="line">${esc(p.line)}</div>` : ""}</td>
+        ${b.salaries ? `<td class="num sal">${p.sal ? money(p.sal) : ""}</td>` : ""}
         <td class="num pts">${p.pts.toFixed(2)}</td>
       </tr>`;
     }).join("");
