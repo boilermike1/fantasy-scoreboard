@@ -7,6 +7,11 @@ app = 'fantasy-scoreboard'
 primary_region = 'ord'
 
 [build]
+# data/ (uploaded DK salaries, Sleeper cache) lives on a volume so it survives deploys
+[mounts]
+  source = 'scoreboard_data'
+  destination = '/app/data'
+
 [http_service]
   internal_port = 8080
   force_https = true

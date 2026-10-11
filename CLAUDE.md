@@ -59,6 +59,9 @@ cost defenses their +10. `normalize_dst()` handles it; don't "simplify" it away.
 ## Deployment
 
 - Host: Fly.io app `fantasy-scoreboard`, region `ord`, auto-suspends when idle, one machine.
+- `data/` is the 1 GB volume `scoreboard_data` (added 2026-10-11), so the uploaded DK salary
+  file survives deploys and restarts. Before it existed, every deploy silently wiped the upload.
+  A volume pins the app to one machine; scaling out would need a second volume.
 - Domain: `fantasyscoreboard.mikemendel.com`, DNS at Cloudflare — A to `66.241.124.182`,
   AAAA to `2a09:8280:1::1ac:89bb:0`, both **DNS only / grey cloud**. The orange proxy
   breaks certificate issuance and renewal.
