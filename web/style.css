@@ -160,7 +160,9 @@ border-top:4px solid transparent;border-bottom:4px solid transparent;margin-left
 .play{display:flex;gap:10px;padding:6px 12px;border-bottom:1px solid #20252d;font-size:12px;line-height:1.35}
 .play:last-child{border-bottom:0}
 .play .pclock{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;min-width:62px}
-.play.score{background:#16210f}
+.play{border-left:3px solid transparent}
+.play.tc{background:color-mix(in srgb,var(--tc) 10%,transparent);border-left-color:color-mix(in srgb,var(--tc) 70%,transparent)}
+.play.tc.hl{background:color-mix(in srgb,var(--tc) 28%,transparent);border-left-color:var(--tc);font-weight:600}
 .play .ptm{color:var(--muted);font-weight:700;min-width:30px}
 
 /* fantasy ownership (league scoring modes) */

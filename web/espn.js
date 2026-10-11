@@ -108,6 +108,37 @@ function espnSlates(games) {
 
 const IN_GAME = new Set(["questionable", "doubtful", "out"]);
 
+// Team colors for the play log. Several primaries (navy, black) vanish on the dark
+// background, so a too-dark primary falls back to the team's alternate color, and
+// whatever is chosen is lifted toward white until it reads.
+function luminance(hex) {
+  const n = parseInt(String(hex || "").replace("#", ""), 16);
+  if (Number.isNaN(n)) return 0;
+  return (0.2126 * (n >> 16 & 255) + 0.7152 * (n >> 8 & 255) + 0.0722 * (n & 255)) / 255;
+}
+function playColor(team) {
+  const main = team?.color, alt = team?.alternateColor;
+  const pick = luminance(main) < 0.22 && luminance(alt) > luminance(main) ? alt : main;
+  if (!pick) return "";
+  const lum = luminance(pick), MIN = 0.4;
+  if (lum >= MIN) return `#${pick}`;
+  const t = (MIN - lum) / (1 - lum), n = parseInt(pick, 16);
+  const lift = (c) => Math.round(c + (255 - c) * t);
+  return `rgb(${lift(n >> 16 & 255)},${lift(n >> 8 & 255)},${lift(n & 255)})`;
+}
+
+const BIG_PLAY_YDS = 20;
+const NOT_FROM_SCRIMMAGE = /kickoff|punt|penalty|timeout|end |field goal|extra point/i;
+// Interceptions are typed as such. A lost fumble is "RECOVERED by" in capitals — the
+// play-by-play writes an own-team recovery in lower case. Text before a replay reversal
+// describes the overturned call, so only what follows it counts.
+function isTurnover(p) {
+  const type = p.type?.text || "";
+  if (/interception/i.test(type) || type === "Fumble Recovery (Opponent)") return true;
+  const text = String(p.text || "").split("REVERSED.").pop();
+  return /\bRECOVERED by\b/.test(text);
+}
+
 async function espnGameDetail(gameId, startIso) {
   const data = await espnJson(`${ESPN_SUM}?event=${gameId}`);
   const drives = data.drives || {};
@@ -116,8 +147,10 @@ async function espnGameDetail(gameId, startIso) {
 
   const byId = {};
   all.forEach((d) => { if (d.team?.id && d.team?.abbreviation) byId[String(d.team.id)] = fixTeam(d.team.abbreviation); });
+  const colors = {};
   ((data.header?.competitions || [{}])[0].competitors || []).forEach((c) => {
     if (c.team?.id && c.team?.abbreviation && !byId[String(c.team.id)]) byId[String(c.team.id)] = fixTeam(c.team.abbreviation);
+    if (c.team?.id) colors[String(c.team.id)] = playColor(c.team);
   });
 
   const seen = new Set(), plays = [];
@@ -126,12 +159,20 @@ async function espnGameDetail(gameId, startIso) {
     if (seen.has(id)) return;
     seen.add(id); plays.push(p);
   }));
-  const log = plays.map((p) => ({
-    clock: p.clock?.displayValue || "", period: p.period?.number,
-    text: p.text || "", team: byId[String(p.start?.team?.id || "")] || "",
-    down: p.start?.shortDownDistanceText || "", spot: p.start?.possessionText || "",
-    scoring: !!p.scoringPlay,
-  })).reverse();
+  const log = plays.map((p) => {
+    const offense = String(p.start?.team?.id || "");
+    const turnover = isTurnover(p);
+    const big = !turnover && Number(p.statYardage) >= BIG_PLAY_YDS && !NOT_FROM_SCRIMMAGE.test(p.type?.text || "");
+    // a turnover belongs to the team that took the ball away
+    const colorOf = turnover ? String(p.end?.team?.id || "") : offense;
+    return {
+      clock: p.clock?.displayValue || "", period: p.period?.number,
+      text: p.text || "", team: byId[offense] || "",
+      down: p.start?.shortDownDistanceText || "", spot: p.start?.possessionText || "",
+      scoring: !!p.scoringPlay, turnover, big,
+      color: colors[colorOf] || colors[offense] || "",
+    };
+  }).reverse();
 
   // only designations made after kickoff count as in-game injuries
   const kickoff = startIso ? new Date(startIso).getTime() : null;

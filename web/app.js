@@ -380,7 +380,7 @@ setLiveTimer();
 
 // ================================================================ scoreboard ====
 let sbTimer = null, sbLoading = false, sbPending = false, sbData = null, sbOpen = null;
-let sbBox = null, sbPlaysAll = false;
+let sbBox = null, sbPlaysAll = false, sbTicket = 0;
 const finalPlays = {};        // ESPN game id -> detail, for games already final
 
 async function loadScoreboard(keepDetail = true) {
@@ -454,6 +454,7 @@ function renderGames() {
 async function openBox(away, home) {
   if (!sbOpen || sbOpen.away !== away || sbOpen.home !== home) sbPlaysAll = false;
   sbOpen = { away, home };
+  const ticket = ++sbTicket;   // a slower, older request must not overwrite this one
   const scoring = currentScoring();
   const wk = $("sbWeek").value;
   try {
@@ -477,6 +478,7 @@ async function openBox(away, home) {
         }));
       } catch { /* plays are a nicety */ }
     }
+    if (ticket !== sbTicket) return;
     sbBox = b;
     renderBox();
   } catch (err) {
@@ -502,7 +504,8 @@ function playsCard(plays, state) {
   const rows = shown.map((p) => {
     const qhdr = sbPlaysAll && p.period !== lastQ
       ? (lastQ = p.period, `<div class="pq">${p.period > 4 ? "OT" : `Q${p.period}`}</div>`) : "";
-    return `${qhdr}<div class="play ${p.scoring ? "score" : ""}">
+    const hl = p.scoring || p.turnover || p.big;
+    return `${qhdr}<div class="play${p.color ? " tc" : ""}${hl ? " hl" : ""}"${p.color ? ` style="--tc:${esc(p.color)}"` : ""}>
       <span class="pclock">${p.period ? `Q${p.period} ` : ""}${esc(p.clock || "")}</span>
       <span class="ptm">${esc(p.team || "")}</span>
       <span>${p.down || p.spot ? `<span class="muted">${esc([p.down, p.spot].filter(Boolean).join(" at "))}</span> ` : ""}${esc(p.text || "")}</span>
@@ -586,7 +589,7 @@ function renderBox() {
 }
 
 function closeBox() {
-  sbOpen = null; sbBox = null;
+  sbOpen = null; sbBox = null; sbTicket++;
   $("sbDetail").classList.add("hidden");
   $("sbDetail").innerHTML = "";
   $("sbGames").classList.remove("hidden");

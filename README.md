@@ -60,7 +60,9 @@ score: QB/RB/WR/TE, K and DST for both teams, grouped by position and sorted by 
 While a game is in progress its card also shows possession (a green arrow beside the team with the
 ball), down and distance, the ball spot, and the last play; opening it adds a situation banner (red
 when inside the 20) and the **last five plays**, newest first, with scoring plays highlighted;
-**Show all plays** expands to the whole game. A finished game offers its full **play log** from
+**Show all plays** expands to the whole game. Each play is tinted in its team's colors (the team
+that took the ball, for a turnover), stronger for scoring plays, turnovers and 20+ yard plays from
+scrimmage. A finished game offers its full **play log** from
 kickoff instead, fetched once and kept for the visit. Plays come from ESPN's game-summary feed.
 
 While a box score is open, the week's other games sit in a narrow column on the right (a swipeable
