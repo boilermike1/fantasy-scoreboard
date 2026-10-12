@@ -45,7 +45,14 @@ hard-coded and `data/` is excluded from both `.gitignore` and `.dockerignore`.
 hidden positions and the Optimal toggle live in the visitor's browser and travel with
 each request. The scoring menu lists only base systems plus that visitor's leagues —
 `live.SCORING` is a process-wide cache, so never build the menu from it directly or one
-visitor's leagues leak into everyone's. The DK salary file is shared server state.
+visitor's leagues leak into everyone's. The DK salary files are shared server state.
+
+**DK salaries are kept per NFL week**, under `data/salaries/<season>/w<week>/`. An upload's week
+comes from matching its `Game Info` games against Sleeper's schedule; a file is identified by its
+set of games, so a re-export of the same slate replaces it and a different slate (showdown, Thu–Mon)
+sits beside it. `dk_for_week` picks per request: classic first, the file covering the most of the
+requested teams, or an exact showdown file for a single-game view. The old single
+`data/uploads/dk_salaries.csv` is migrated in automatically on first read.
 
 **Scoring is rule tables, not hardcoded math** (`live.OFFENSE/DST/KICKER`). That's what
 lets a Sleeper league's own settings become a scoring system. Changing these changes
@@ -86,5 +93,4 @@ and creates duplicate apps. Use `fly deploy`, or just push to `main`.
 
 - Billing is live (card added 2026-10-08). Expect well under $1/month at this usage.
 - Yahoo leagues: scoped but not built — needs OAuth, per-user token storage, XML mapping.
-- DK salary upload is shared and unauthenticated, and the app has no volume, so the
-  uploaded file is lost when the machine is replaced.
+- DK salary upload is shared and unauthenticated — anyone can add or remove a file.

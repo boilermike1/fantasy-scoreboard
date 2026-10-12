@@ -1,11 +1,9 @@
 """FastAPI server for the public fantasy scoreboard: Live, Scoreboard and Settings."""
-import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-import json
 
 from core.live import (leaderboard as live_leaderboard, get_state as live_state,
                        BASE_KEYS as live_base_keys)
@@ -19,7 +17,6 @@ DATA = ROOT / "data"
 UPLOADS = DATA / "uploads"
 WEB = ROOT / "web"
 UPLOADS.mkdir(parents=True, exist_ok=True)
-META_PATH = DATA / "meta.json"
 
 
 # ---------------------------------------------------------------- app ----
@@ -66,15 +63,6 @@ def index():
 app.mount("/static", NoCacheStatic(directory=WEB), name="static")
 
 
-# ---------------------------------------------------------------- data ----
-def _meta():
-    return json.loads(META_PATH.read_text()) if META_PATH.exists() else {}
-
-
-def _save_meta(**kw):
-    m = _meta(); m.update(kw); META_PATH.write_text(json.dumps(m, indent=2))
-
-
 # ---------------------------------------------------------------- live ----
 @app.get("/api/live")
 def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk",
@@ -105,8 +93,13 @@ def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk
 
         hurt = {}          # injuries now come from the browser (see web/espn.js)
 
-        # DK's own export only: ETR projections are paid and live in the separate DFS Tools app
-        table = (dk_salaries.for_slate(sorted(teams) if teams else None, allow_etr=False)
+        # DK's own export only: ETR projections are paid and live in the separate DFS Tools app.
+        # Salaries are kept per week; season-to-date borrows the current week's.
+        st = live_state()
+        sal_week = st["week"] if season_mode or not week else int(week)
+        table = (dk_salaries.for_slate(sorted(teams) if teams else None, allow_etr=False,
+                                       season=season or st["season"], week=sal_week,
+                                       prefer_showdown=single_game)
                  if scoring == "dk" else None)
         showdown_mode = bool(table and table.get("showdown") and single_game)
 
@@ -181,7 +174,8 @@ def boxscore(away: str, home: str, season: str = None, week: int = None, scoring
         owners = sleeper_league.ownership(league_id, my_team) if league_id else None
         box = game_detail(season, week, away, home, scoring, owners)
         # DK salaries alongside DraftKings scoring, from DK's own (public) export only
-        table = dk_salaries.for_slate([away, home], allow_etr=False) if scoring == "dk" else None
+        table = (dk_salaries.for_slate([away, home], allow_etr=False, season=box["season"],
+                                       week=box["week"]) if scoring == "dk" else None)
         if table:
             for side in box["teams"]:
                 for p in side["players"]:
@@ -215,40 +209,26 @@ def sleeper_teams(league_id: str = None):
 
 @app.get("/api/settings")
 def settings_state():
-    """What the server holds that every visitor shares — currently just the salary file."""
-    dk = dk_salaries.dk_salaries()
-    return {
-        "salaries": None if not dk else {
-            "source": dk.get("source", "DraftKings"), "players": dk["count"],
-            "teams": sorted(dk["teams"]), "games": dk["games"], "showdown": dk["showdown"],
-            "uploaded_at": _meta().get("dk_salaries", {}).get("uploaded_at"),
-            "filename": _meta().get("dk_salaries", {}).get("filename"),
-        },
-        "default_league": sleeper_league.default_ids()[0],
-    }
+    """What the server holds that every visitor shares — the DK salary files, by week."""
+    return {"salary_files": dk_salaries.saved_dk(),
+            "default_league": sleeper_league.default_ids()[0]}
 
 
 @app.post("/api/settings/salaries")
 async def upload_dk_salaries(file: UploadFile = File(...)):
-    """Upload DraftKings' public salary export. Shared by everyone using the site."""
+    """Upload DraftKings' public salary export. Filed under its week; shared by everyone."""
     raw = await file.read()
     try:
-        from core.dksalaries import load_dk_salaries
-        parsed = load_dk_salaries(raw)
+        saved = dk_salaries.save_dk(raw, file.filename)
     except Exception as e:
         raise HTTPException(400, str(e))
-    (UPLOADS / "dk_salaries.csv").write_bytes(raw)
-    _save_meta(dk_salaries={"filename": file.filename,
-                            "uploaded_at": time.strftime("%Y-%m-%d %H:%M"),
-                            "players": parsed["count"]})
-    return {"ok": True, "players": parsed["count"], "teams": sorted(parsed["teams"]),
-            "games": len(parsed["games"]), "showdown": parsed["showdown"]}
+    return {"ok": True, **saved}
 
 
 @app.delete("/api/settings/salaries")
-def clear_dk_salaries():
-    path = UPLOADS / "dk_salaries.csv"
-    if path.exists():
-        path.unlink()
-    _save_meta(dk_salaries=None)
+def clear_dk_salaries(id: str):
+    try:
+        dk_salaries.delete_dk(id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return {"ok": True}

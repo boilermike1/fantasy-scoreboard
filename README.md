@@ -8,7 +8,7 @@ password). The DFS lineup optimizer is a separate private project: `dfs-tools`.
 core/       Sleeper stats, scoring, ESPN, salaries, hindsight-optimal solver (pure Python, no web)
 api/        FastAPI server
 web/        browser UI
-data/       DK salary upload and caches (not code; never committed)
+data/       DK salary uploads (per week) and caches (not code; never committed)
 run.sh      start the web server locally
 ```
 
@@ -128,7 +128,10 @@ Server-side and shared by everyone:
 - **DraftKings salaries** — upload the CSV from a DK contest's player list (*Export to CSV*). This is
   public DraftKings data, unlike ETR projections, so it works on the public site: it turns on the
   salary column and the Optimal lineup. `core/dksalaries.py` parses both classic and showdown exports
-  and reads kickoff times out of the `Game Info` column.
+  and reads kickoff times out of the `Game Info` column. Each upload is filed under the NFL week its
+  games fall in and kept, so past weeks keep their salaries; Settings lists every saved file by week
+  with its own **Remove**. Re-uploading the same slate replaces it; a showdown or other slate the same
+  week is kept alongside.
 
 ETR projections are never used here — they're paid, and live in the separate DFS Tools app
 (`allow_etr=False`).
@@ -136,8 +139,8 @@ ETR projections are never used here — they're paid, and live in the separate D
 ### Salaries and the optimal lineup
 
 DraftKings has **no public salary API**, so salaries come from the DraftKings export uploaded on the
-Settings tab. They appear on the Live tab only under **DraftKings** scoring, and only for a slate the
-uploaded file covers. Matching is by normalized name for skill players and by team for defenses.
+Settings tab. They appear on the Live tab and in Scoreboard box scores only under **DraftKings**
+scoring, and only for a week and games an uploaded file covers. Matching is by normalized name for skill players and by team for defenses.
 Kickers have no classic salary because DK classic has no K slot.
 
 Picking a **single game** in the Slate menu switches the board to showdown shape: one combined list of

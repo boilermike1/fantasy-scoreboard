@@ -728,18 +728,38 @@ async function loadSettings() {
 
   try {
     const s = await api("/api/settings");
-    if (s.salaries) {
-      const sal = s.salaries;
-      setStatus($("setSalStatus"),
-        `${sal.source} · ${sal.players} priced players · ${sal.teams.length} teams` +
-        (sal.uploaded_at ? ` · ${sal.uploaded_at}` : ""), "ok");
-      $("setSalGames").innerHTML = (sal.games || []).map((g) =>
-        `<span class="gamechip">${esc(g.away)} @ ${esc(g.home)}</span>`).join("");
-    } else {
-      setStatus($("setSalStatus"), "No salary file loaded");
-      $("setSalGames").innerHTML = "";
-    }
+    renderSalaryFiles(s.salary_files || []);
   } catch (e) { setStatus($("setSalStatus"), e.message, "err"); }
+}
+
+// one row per stored DK file, newest week first
+function renderSalaryFiles(files) {
+  if (!files.length) {
+    setStatus($("setSalStatus"), "No salary files saved");
+    $("setSalGames").innerHTML = "";
+    return;
+  }
+  const weeks = new Set(files.map((f) => `${f.season}-${f.week}`)).size;
+  setStatus($("setSalStatus"), `${files.length} file${files.length === 1 ? "" : "s"} across ` +
+    `${weeks} week${weeks === 1 ? "" : "s"}`, "ok");
+  const what = (f) => f.showdown
+    ? `Showdown · ${f.games.map((g) => `${esc(g.away)} @ ${esc(g.home)}`).join(", ")}`
+    : `Classic · ${f.games.length} game${f.games.length === 1 ? "" : "s"}`;
+  $("setSalGames").innerHTML = `<div class="salfiles">${files.map((f) => `
+    <div class="salfile">
+      <span class="salwk">Week ${f.week}</span>
+      <span class="salwhat" title="${esc(f.games.map((g) => `${g.away} @ ${g.home}`).join(", "))}">${what(f)}</span>
+      <span class="lmeta">${f.players} players${f.uploaded_at ? ` · ${esc(f.uploaded_at)}` : ""}</span>
+      <button class="small ghost" data-salid="${esc(f.id)}">Remove</button>
+    </div>`).join("")}</div>`;
+  $("setSalGames").querySelectorAll("[data-salid]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("Remove this salary file for everyone?")) return;
+    try {
+      await api(`/api/settings/salaries?id=${encodeURIComponent(b.dataset.salid)}`, { method: "DELETE" });
+    } catch (err) { setStatus($("setSalStatus"), err.message, "err"); return; }
+    await loadSettings();
+    liveData = null; if ($("live").classList.contains("active")) loadLive();
+  }));
 }
 
 $("setSleeperLoad").addEventListener("click", () => {
@@ -763,16 +783,11 @@ $("setSalFile").addEventListener("change", async (e) => {
   try {
     const r = await api("/api/settings/salaries", { method: "POST", body: fd });
     await loadSettings();
-    setStatus($("setSalStatus"), $("setSalStatus").textContent +
-      (r.showdown ? " · showdown file" : ""), "ok");
+    setStatus($("setSalStatus"), `Saved to Week ${r.week} · ${r.players} players` +
+      (r.showdown ? " · showdown" : ""), "ok");
     liveData = null; if ($("live").classList.contains("active")) loadLive();
   } catch (err) { setStatus($("setSalStatus"), err.message, "err"); }
   e.target.value = "";
-});
-$("setSalClear").addEventListener("click", async () => {
-  await api("/api/settings/salaries", { method: "DELETE" });
-  await loadSettings();
-  liveData = null; if ($("live").classList.contains("active")) loadLive();
 });
 
 document.querySelector('.tab[data-tab="settings"]')?.addEventListener("click", loadSettings);
