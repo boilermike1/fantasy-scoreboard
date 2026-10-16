@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.live import (leaderboard as live_leaderboard, get_state as live_state,
-                       BASE_KEYS as live_base_keys)
+                       BASE_KEYS as live_base_keys, RANGE_MODES)
 from core.scoreboard import get_scoreboard, game_detail
 from core import sleeper as sleeper_league
 from core import salaries as dk_salaries
@@ -68,7 +68,7 @@ app.mount("/static", NoCacheStatic(directory=WEB), name="static")
 def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk",
          my_team: str = None, slate: str = "all", optimal: bool = False,
          leagues: str = None, slate_teams: str = None, single_game: bool = False):
-    """Top scorers by position for one NFL week (Thu-Mon), or week="season" for season to date."""
+    """Top scorers by position for one NFL week (Thu-Mon), or a multi-week view (RANGE_MODES)."""
     try:
         # register whichever leagues this visitor picked (falling back to the env default)
         # leagues=None means "visitor has no settings yet" -> show the default league.
@@ -82,7 +82,7 @@ def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk
         league_id = sleeper_league.league_id_from_key(scoring)
         owners = sleeper_league.ownership(league_id, my_team) if league_id else None
 
-        season_mode = str(week).lower() == "season"
+        season_mode = str(week).lower() in RANGE_MODES
         # The slate's teams come from the client, which derives them from ESPN kickoff
         # times. Slate options themselves are built in the browser.
         slates, teams, active = [], None, "all"

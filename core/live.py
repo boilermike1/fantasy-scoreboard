@@ -190,46 +190,115 @@ def dk_points(s, pos, scoring=DEFAULT_SCORING):
     return round(pts, 2)
 
 
-def _statline(s, pos):
+def _statline(s, pos, avg=False):
+    """Readable stat line. Primary stats lead: passing for QBs, rushing for RBs, receiving
+    for WRs and TEs. With avg=True the stats are per-game averages, shown to one decimal."""
     g = lambda k: float(s.get(k, 0) or 0)
+    n = lambda v: f"{v:.1f}" if avg else f"{v:.0f}"
     bits = []
     if pos == "DST":
         for label, key in (("sk", "sack"), ("int", "int"), ("fr", "fum_rec"),
                            ("TD", "def_td"), ("saf", "safe")):
-            if g(key): bits.append(f"{g(key):.0f} {label}")
-        if s.get("pts_allow") is not None: bits.append(f"{g('pts_allow'):.0f} PA")
+            if g(key): bits.append(f"{n(g(key))} {label}")
+        if s.get("pts_allow") is not None: bits.append(f"{n(g('pts_allow'))} PA")
         return ", ".join(bits)
     if pos == "K":
-        if g("fgm"): bits.append(f"{g('fgm'):.0f}/{g('fga'):.0f} FG")
-        if g("xpm"): bits.append(f"{g('xpm'):.0f} XP")
+        if g("fgm"): bits.append(f"{n(g('fgm'))}/{n(g('fga'))} FG")
+        if g("xpm"): bits.append(f"{n(g('xpm'))} XP")
         return ", ".join(bits)
+
+    parts = {}
     if g("pass_att") or g("pass_yd") or g("pass_td"):
-        att = f"{g('pass_cmp'):.0f}/{g('pass_att'):.0f}, " if g("pass_att") else ""
-        bits.append(f"{att}{g('pass_yd'):.0f} pass yd, {g('pass_td'):.0f} TD" + (f", {g('pass_int'):.0f} INT" if g("pass_int") else ""))
+        att = f"{n(g('pass_cmp'))}/{n(g('pass_att'))}, " if g("pass_att") else ""
+        parts["pass"] = (f"{att}{n(g('pass_yd'))} pass yd, {n(g('pass_td'))} TD"
+                         + (f", {n(g('pass_int'))} INT" if g("pass_int") else ""))
     if g("rush_att") or g("rush_yd") or g("rush_td"):
-        car = f"{g('rush_att'):.0f} car, " if g("rush_att") else ""
-        bits.append(f"{car}{g('rush_yd'):.0f} rush yd" + (f", {g('rush_td'):.0f} TD" if g("rush_td") else ""))
+        car = f"{n(g('rush_att'))} car, " if g("rush_att") else ""
+        parts["rush"] = f"{car}{n(g('rush_yd'))} rush yd" + (f", {n(g('rush_td'))} TD" if g("rush_td") else "")
     if g("rec") or g("rec_yd") or g("rec_tgt"):
-        tgt = f"/{g('rec_tgt'):.0f}" if g("rec_tgt") else ""
-        bits.append(f"{g('rec'):.0f}{tgt} rec, {g('rec_yd'):.0f} yd" + (f", {g('rec_td'):.0f} TD" if g("rec_td") else ""))
+        tgt = f"/{n(g('rec_tgt'))}" if g("rec_tgt") else ""
+        parts["rec"] = f"{n(g('rec'))}{tgt} rec, {n(g('rec_yd'))} yd" + (f", {n(g('rec_td'))} TD" if g("rec_td") else "")
+    order = STAT_ORDER.get(pos, STAT_ORDER["QB"])
+    bits = [parts[k] for k in order if k in parts]
     if g("fum_lost"):
-        bits.append(f"{g('fum_lost'):.0f} fum lost")
+        bits.append(f"{n(g('fum_lost'))} fum lost")
     return " · ".join(bits)
+
+
+STAT_ORDER = {"QB": ("pass", "rush", "rec"), "RB": ("rush", "rec", "pass"),
+              "WR": ("rec", "rush", "pass"), "TE": ("rec", "rush", "pass")}
+
+# Multi-week views on the Live tab: key -> (label, how many recent weeks or None for all,
+# average per completed game?). Each game is scored on its own and then added up, so per-game
+# rules (DK's yardage bonuses, points-allowed tiers) apply per game, not to season totals.
+RANGE_MODES = {
+    "season": ("season to date", None, False),
+    "season_avg": ("season to date, average per game", None, True),
+    "last3": ("last 3 weeks, average per game", 3, True),
+    "last5": ("last 5 weeks, average per game", 5, True),
+}
+PAST_WEEK_TTL = 3600         # a finished week's stats only change with late corrections
+
+
+def _range_stats(season, cur_week, last_n, average, scoring, players):
+    """pid -> {"pts", "gp", "stats"} summed over a span of weeks.
+
+    Averages count only games that are final. "Last N weeks" means the N most recent weeks
+    whose games are all final, so a week in progress joins the window once it's done.
+    """
+    statuses = {w: team_game_status(week_games(season, w)) for w in range(1, cur_week + 1)}
+    if last_n:
+        done = [w for w in statuses if statuses[w] and all(v == "complete" for v in statuses[w].values())]
+        weeks = done[-last_n:]
+    else:
+        weeks = list(statuses)
+
+    out = {}
+    for w in weeks:
+        try:
+            stats = get_stats(season, w, ttl=STATS_TTL if w == cur_week else PAST_WEEK_TTL)
+        except Exception:
+            continue
+        status = statuses[w]
+        for pid, s in stats.items():
+            meta = players.get(pid)
+            if not meta or not s.get("gp"):
+                continue
+            team_state = status.get((meta["team"] or pid).upper(), "")
+            if average and team_state != "complete":
+                continue                  # only finished games count toward an average
+            if meta["pos"] == "DST":
+                s = normalize_dst(s, team_state in ("in_game", "complete"))
+            row = out.setdefault(pid, {"pts": 0.0, "gp": 0, "stats": {}})
+            row["pts"] += dk_points(s, meta["pos"], scoring)
+            row["gp"] += 1
+            for k, v in s.items():
+                if isinstance(v, (int, float)):
+                    row["stats"][k] = row["stats"].get(k, 0) + v
+    return out
 
 
 def leaderboard(season=None, week=None, top=50, scoring=DEFAULT_SCORING, owners=None,
                 teams=None, injuries=None, salaries=None, scoring_keys=None):
     """Top scorers by position for one NFL week (Thu-Mon), or season to date.
 
-    Pass week="season" for season-to-date totals.
+    week may also be a RANGE_MODES key: season totals, or per-game averages over the
+    season or the last 3 / 5 weeks.
     """
     state = get_state()
     season = str(season or state["season"])
-    season_mode = str(week).lower() == "season"
+    mode = str(week).lower() if str(week).lower() in RANGE_MODES else None
+    season_mode = mode is not None
     week = None if season_mode else int(week or state["week"])
 
     players = get_players()
-    stats = get_stats(season, week)
+    ranged = None
+    if season_mode:
+        _, last_n, average = RANGE_MODES[mode]
+        ranged = _range_stats(season, int(state["week"]), last_n, average, scoring, players)
+        stats = {pid: r["stats"] for pid, r in ranged.items()}
+    else:
+        stats = get_stats(season, week)
     games = [] if season_mode else week_games(season, week)
     status_by_team = team_game_status(games)
 
@@ -246,9 +315,18 @@ def leaderboard(season=None, week=None, top=50, scoring=DEFAULT_SCORING, owners=
         if teams is not None and (meta["team"] or pid).upper() not in teams:
             continue
         started = status_by_team.get((meta["team"] or pid).upper(), "") in ("in_game", "complete")
-        if pos == "DST":
-            s = normalize_dst(s, started)
-        pts = dk_points(s, pos, scoring)
+        line_avg = False
+        if ranged:
+            r = ranged[pid]
+            avg = RANGE_MODES[mode][2]
+            pts = round(r["pts"] / r["gp"], 2) if avg else round(r["pts"], 2)
+            if avg:
+                s = {k: v / r["gp"] for k, v in s.items()}
+                line_avg = r["gp"] > 1
+        else:
+            if pos == "DST":
+                s = normalize_dst(s, started)
+            pts = dk_points(s, pos, scoring)
         # a board of top scorers, not everyone who played — but a defense that is on the
         # field belongs there even while it is scoreless
         if pts <= 0 and not (pos == "DST" and started):
@@ -261,7 +339,8 @@ def leaderboard(season=None, week=None, top=50, scoring=DEFAULT_SCORING, owners=
             "injury": inj["status"] if inj else "", "injury_detail": inj["detail"] if inj else "",
             "sal": None, "cpt_sal": None,
             "name": meta["name"], "team": team, "pos": pos,
-            "pts": pts, "line": _statline(s, pos),
+            "pts": pts, "line": ((f"{ranged[pid]['gp']} GP · " if ranged else "")
+                                 + _statline(s, pos, line_avg)).rstrip(" ·"),
             "img": (CDN_TEAM.format(team=team.lower()) if pos == "DST"
                     else CDN_PLAYER.format(pid=pid)),
             "team_img": CDN_TEAM.format(team=team.lower()),
@@ -285,8 +364,9 @@ def leaderboard(season=None, week=None, top=50, scoring=DEFAULT_SCORING, owners=
 
     return {
         "season": season,
-        "week": "season" if season_mode else week,
+        "week": mode if season_mode else week,
         "season_mode": season_mode,
+        "mode_label": RANGE_MODES[mode][0] if season_mode else "",
         "current_week": state["week"],
         "scoring": scoring,
         "scoring_label": (SCORING.get(scoring) or SCORING[DEFAULT_SCORING])["label"],

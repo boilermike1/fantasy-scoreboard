@@ -226,7 +226,7 @@ async function loadLive() {
     }
 
     // ESPN is fetched here, not on the server (it refuses datacenter IPs)
-    const seasonMode = wk === "season";
+    const seasonMode = !!wk && !/^\d+$/.test(wk);   // a multi-week view, not one week
     let slates = [], espnGames = [];
     if (!seasonMode) {
       try {
@@ -271,10 +271,13 @@ async function loadLive() {
         o.value = w; o.textContent = `Week ${w}${w === r.current_week ? " (current)" : ""}`;
         $("liveWeek").appendChild(o);
       }
-      const season = document.createElement("option");
-      season.value = "season"; season.textContent = "Season to date";
-      $("liveWeek").appendChild(season);
-      $("liveWeek").value = r.season_mode ? "season" : r.week;
+      [["season", "Season to date"], ["last3", "Last 3 weeks (average)"],
+       ["last5", "Last 5 weeks (average)"], ["season_avg", "Season to date (average)"]].forEach(([v, label]) => {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = label;
+        $("liveWeek").appendChild(o);
+      });
+      $("liveWeek").value = r.week;
     }
     liveSeason = r.season; liveWeekNow = r.current_week;
     const posSig = r.positions.join("|") + (r.salaries ? "+s" : "");
@@ -295,7 +298,7 @@ async function loadLive() {
     }
 
     const isCurrent = r.season_mode || Number(r.week) === Number(r.current_week);
-    const when = r.season_mode ? `${r.season} season to date` : `${r.season} Week ${r.week}`;
+    const when = r.season_mode ? `${r.season} ${r.mode_label}` : `${r.season} Week ${r.week}`;
     const games = r.live_games ? ` · <b>${r.live_games}</b> game${r.live_games > 1 ? "s" : ""} in progress` : "";
     const slateLabel = slateOpts.find((x) => x.key === r.slate);
     const slateTxt = slateLabel && r.slate !== "all" ? ` · ${esc(slateLabel.label)}` : "";

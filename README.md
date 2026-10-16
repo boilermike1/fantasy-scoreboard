@@ -82,11 +82,16 @@ one NFL week, Thursday through Monday. Data comes from the [Sleeper API](https:/
 which is public and needs no key or account. Pick any week of the season; the current week
 auto-refreshes while the tab is open, at a cadence that follows the slate: every 30 seconds while
 games are being played, every 5 minutes while waiting for a kickoff, and not at all once every game is
-final (the toolbar says which). Season to date never polls. The week menu also offers **Season to date**. A **Slate** menu filters to All games, Main slate
+final (the toolbar says which). The multi-week views never poll. The week menu also offers
+**Season to date** (totals, with games played), **Last 3 weeks** and **Last 5 weeks** (average points
+per game) and **Season to date (average)**. Every game is scored on its own and then added up, so
+per-game rules — DK's yardage bonuses, points-allowed tiers — apply per game. Averages count only
+final games; "last N weeks" are the N most recent weeks whose games are all final. A **Slate** menu filters to All games, Main slate
 (Sunday 1pm + 4pm windows), Early only, Late only, or any single island game (Thursday, international, Sunday
 night, Monday) — windows are classified from each kickoff's Eastern start time, so they follow the real
 schedule each week. It defaults to All games, resets when you change weeks, and is hidden for
-Season to date. Each position card lists up to 50 players and grows
+the multi-week views. Stat lines lead with each position's main stats — passing for QBs, rushing
+for RBs, receiving for WRs and TEs. Each position card lists up to 50 players and grows
 with the window (about 11 rows on a 950px-tall screen, more on a larger one), with the rest behind a
 scrollbar.
 Checkboxes show or hide each position. **FLEX** pools RB/WR/TE into one ranking (each row tagged with
