@@ -238,3 +238,7 @@ font-size:11px;color:var(--muted)}
 .salfile .salwk{font-weight:700;min-width:58px}
 .salfile .salwhat{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .salfile button{margin-left:auto}
+
+/* footer */
+.sitefoot{display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 20px 36px;margin-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+.sitefoot img{display:block;width:56px;height:56px}
