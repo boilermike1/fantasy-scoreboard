@@ -1,5 +1,7 @@
 # Fantasy Scoreboard
 
+<img src="docs/logo.png" alt="Fantasy Scoreboard" width="108">
+
 Public NFL fantasy scoreboard: a live leaderboard by position, every game's fantasy box score, and
 per-visitor Sleeper league scoring. Runs at **https://fantasyscoreboard.mikemendel.com** (no
 password). The DFS lineup optimizer is a separate private project: `dfs-tools`.

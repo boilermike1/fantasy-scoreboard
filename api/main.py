@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.live import (leaderboard as live_leaderboard, get_state as live_state,
@@ -58,6 +58,11 @@ def index():
                 .replace("/static/espn.js", f"/static/espn.js?v={v}")
                 .replace("</body>", CF_ANALYTICS + "\n</body>"))
     return HTMLResponse(html, headers=NO_CACHE)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(WEB / "logo.png", media_type="image/png")
 
 
 app.mount("/static", NoCacheStatic(directory=WEB), name="static")
