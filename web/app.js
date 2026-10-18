@@ -26,6 +26,14 @@ function setStatus(el, msg, cls = "muted") { el.textContent = msg; el.className 
 const ownerTag = (p) => p.owner
   ? `<span class="owner${p.mine ? " mine" : ""}" title="${esc(p.owner)}">${esc(p.owner)}</span>` : "";
 
+// who has the ball: a small football beside the team
+const BALL = `<svg class="poss" viewBox="0 0 24 14" aria-hidden="true"><title>Has the ball</title>
+  <ellipse cx="12" cy="7" rx="11" ry="6.2" fill="#B8642C" stroke="#F0C9A0" stroke-width="1.2"/>
+  <path d="M4.5 7h15" stroke="#fff" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M9 5.2v3.6M11 5v4M13 5v4M15 5.2v3.6" stroke="#fff" stroke-width="1" stroke-linecap="round"/>
+</svg>`;
+const hasBall = (g, team) => !!(g.situation && g.situation.possession === team);
+
 // in-game injury designation
 const INJ_SHORT = { out: "OUT", doubtful: "D", questionable: "Q", probable: "P" };
 function injTag(p) {
@@ -439,8 +447,7 @@ function renderGames() {
     return `<div class="grow ${lost ? "lost" : ""}">
       <img src="${esc(side === "away" ? g.away_logo : g.home_logo)}" alt="" loading="lazy">
       <span class="tm">${esc(side === "away" ? g.away : g.home)}${
-        g.situation && g.situation.possession === (side === "away" ? g.away : g.home)
-          ? '<span class="poss" title="Has the ball"></span>' : ""}</span>
+        hasBall(g, side === "away" ? g.away : g.home) ? BALL : ""}</span>
       <span class="sc">${g.state === "pre" ? "" : them}</span>
     </div>`;
   };
@@ -514,7 +521,7 @@ function playsCard(plays, state) {
       ? (lastQ = p.period, `<div class="pq">${p.period > 4 ? "OT" : `Q${p.period}`}</div>`) : "";
     const hl = p.scoring || p.turnover || p.big;
     return `${qhdr}<div class="play${p.color ? " tc" : ""}${hl ? " hl" : ""}"${p.color ? ` style="--tc:${esc(p.color)}"` : ""}>
-      <span class="pclock">${p.period ? `Q${p.period} ` : ""}${esc(p.clock || "")}</span>
+      <span class="pclock">${p.period ? `${p.period > 4 ? "OT" : `Q${p.period}`} ` : ""}${esc(p.clock || "")}</span>
       <span class="ptm">${esc(p.team || "")}</span>
       <span>${p.down || p.spot ? `<span class="muted">${esc([p.down, p.spot].filter(Boolean).join(" at "))}</span> ` : ""}${esc(p.text || "")}</span>
     </div>`;
@@ -530,7 +537,7 @@ function sideGames() {
   const others = (sbData?.games || []).filter((x) => !(sbOpen && x.away === sbOpen.away && x.home === sbOpen.home));
   if (!others.length) return "";
   const line = (t, s, g, lost) => `<div class="sgrow ${lost ? "lost" : ""}">
-    <img src="${esc(LOGO(t))}" alt="" loading="lazy"><span>${esc(t)}</span>
+    <img src="${esc(LOGO(t))}" alt="" loading="lazy"><span>${esc(t)}${hasBall(g, t) ? BALL : ""}</span>
     <b>${g.state === "pre" ? "" : s}</b></div>`;
   return `<aside class="sidegames">${others.map((g) => `
     <div class="sgame ${g.state === "in" ? "inprog" : ""}" data-away="${esc(g.away)}" data-home="${esc(g.home)}">
@@ -580,7 +587,7 @@ function renderBox() {
       <span class="status muted">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.detail || "")} · ${esc(b.scoring_label)} scoring</span>
     </div>
     ${sit ? `<div class="card" style="margin-bottom:14px"><div class="head">
-        <span class="title">${esc(sit.possession || "")} ball</span>
+        <span class="title">${sit.possession ? BALL : ""}${esc(sit.possession || "")} ball</span>
         ${sit.down_distance ? `<span class="stat"><b>${esc(sit.down_distance)}</b></span>` : ""}
         ${sit.ball_on ? `<span class="stat">ball on <b>${esc(sit.ball_on)}</b></span>` : ""}
         ${sit.red_zone ? `<span class="stat" style="color:var(--red)"><b>RED ZONE</b></span>` : ""}

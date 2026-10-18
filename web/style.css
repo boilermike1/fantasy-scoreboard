@@ -153,8 +153,9 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 line-height:1.35}
 .game .sit b{color:var(--text);font-weight:600}
 .game .sit.rz b{color:var(--red)}
-.poss{display:inline-block;width:0;height:0;border-left:6px solid var(--green);
-border-top:4px solid transparent;border-bottom:4px solid transparent;margin-left:6px;vertical-align:middle}
+.poss{display:inline-block;width:17px;height:10px;margin-left:6px;vertical-align:-1px}
+.card .head .title .poss{margin:0 6px 0 0}
+.sgrow .poss{width:16px;height:9px;margin-left:4px;vertical-align:0}
 .plays{margin-top:0}
 .plays .card .head{padding:8px 12px}
 .play{display:flex;gap:10px;padding:6px 12px;border-bottom:1px solid #20252d;font-size:12px;line-height:1.35}
