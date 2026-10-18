@@ -59,7 +59,7 @@ Then open http://localhost:8000.
 upcoming next, finals at the bottom. Refresh cadence adapts the same way the Live tab's does. Click any game for a fantasy box
 score: QB/RB/WR/TE, K and DST for both teams, grouped by position and sorted by points.
 
-While a game is in progress its card also shows possession (a green arrow beside the team with the
+While a game is in progress its card also shows possession (a small football beside the team with the
 ball), down and distance, the ball spot, and the last play; opening it adds a situation banner (red
 when inside the 20) and the **last five plays**, newest first, with scoring plays highlighted;
 **Show all plays** expands to the whole game. Each play is tinted in its team's colors (the team
