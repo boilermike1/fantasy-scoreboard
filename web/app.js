@@ -724,7 +724,7 @@ $("sbAuto").addEventListener("change", setSbTimer);
 $("sbBetting").checked = showBetting();
 $("sbBetting").addEventListener("change", () => {
   prefSet("sb.betting", $("sbBetting").checked);
-  renderGames();
+  renderGames();          // the Scoreboard tab may be hidden; it's ready when the user returns
   if (sbOpen) renderBox();
 });
 document.querySelector('.tab[data-tab="scoreboard"]').addEventListener("click", () => {

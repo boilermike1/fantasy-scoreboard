@@ -24,7 +24,6 @@
         <label class="inlinelabel">Week <select id="sbWeek"></select></label>
         <label class="inlinelabel">Scoring <select id="sbScoring"></select></label>
         <label class="inlinelabel hidden" id="sbTeamWrap">My team <select id="sbTeam"></select></label>
-        <label class="check" title="Spreads, implied totals and results"><input type="checkbox" id="sbBetting" checked> Betting lines</label>
         <label class="check"><input type="checkbox" id="sbAuto" checked> Auto-refresh</label><span id="sbAutoNote" class="autonote"></span>
         <button id="sbRefresh" class="small">Refresh now</button>
       </div>
@@ -59,6 +58,15 @@
       <div class="setbody">
         <p class="hint2">Choose which systems appear in the Scoring menu. Stored in this browser only.</p>
         <div id="setScoring" class="scoringlist"></div>
+      </div>
+    </div>
+
+    <div class="card setcard">
+      <div class="head"><span class="title">Betting lines</span></div>
+      <div class="setbody">
+        <p class="hint2">Point spreads, implied team totals and cover / over-under results on the
+           Scoreboard. Stored in this browser only.</p>
+        <label class="check"><input type="checkbox" id="sbBetting" checked> Show betting lines</label>
       </div>
     </div>
 
