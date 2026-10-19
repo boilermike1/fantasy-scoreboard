@@ -255,3 +255,24 @@ font-size:11px;color:var(--muted)}
 .sgrow .imp + b{margin-left:0}
 .sitefoot a{color:var(--muted);text-decoration:underline;text-underline-offset:2px}
 .sitefoot a:hover{color:var(--text)}
+
+/* prop hover card and player panel */
+#sbDetail tr.prow{cursor:pointer}
+#sbDetail tr.prow:hover td{background:#1b2029}
+.ptip{position:fixed;z-index:50;display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:8px 10px;font-size:12px;pointer-events:none;box-shadow:0 6px 24px rgba(0,0,0,.45);min-width:180px}
+.ptip .pt-name{font-weight:600;margin-bottom:4px}
+.ptip table{border-collapse:collapse}.ptip td{padding:1px 8px 1px 0}
+.ptip .num,.pp-t .num{text-align:right;font-variant-numeric:tabular-nums}
+.ptip .mv{color:var(--muted);font-size:11px}
+.pt-foot{color:var(--muted);font-size:10px;margin-top:6px}
+.pp-back{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.pp{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(720px,100%);max-height:88vh;overflow:auto;padding:14px 18px}
+.pp-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.pp-title{font-size:17px;font-weight:700;flex:1}
+.pp h3{font-size:13px;margin:14px 0 6px;color:var(--text)}
+.pp-t{width:100%;border-collapse:collapse;font-size:12px}
+.pp-t th{color:var(--muted);font-weight:500;text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+.pp-t td{padding:4px 6px;border-bottom:1px solid #20252d}
+.pp-t tr.dim td{color:var(--muted)}
+.hit.over{color:var(--green)}.hit.under{color:var(--red)}.hit.push{color:var(--muted)}

@@ -75,6 +75,13 @@ that took the ball, for a turnover), stronger for scoring plays, turnovers and 2
 scrimmage. A finished game offers its full **play log** from
 kickoff instead, fetched once and kept for the visit. Plays come from ESPN's game-summary feed.
 
+**Player props** (DraftKings lines via ESPN): before kickoff a box score lists each team's players
+who have lines, with their main ones (`247.5 pass yds · 1.5 pass TD · 29.5 rush yds`). Hovering any
+player shows the core over/unders for his position and how they've moved since opening; clicking (or
+tapping) opens a panel with every line for the game and his season week by week — fantasy points in the
+selected scoring system and each core line against the result (▲ over, ▼ under). Lines appear about 2–3
+days before kickoff, are archived on the server, and are hidden with "Show betting lines".
+
 While a box score is open, the week's other games sit in a narrow column on the right (a swipeable
 strip on phones); click one to jump to it.
 

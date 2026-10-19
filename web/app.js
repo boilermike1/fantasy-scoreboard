@@ -584,9 +584,14 @@ async function openBox(away, home) {
     const lid2 = scoring.startsWith("league:") ? scoring.slice(7) : "";
     if (lid2 && myTeamFor(lid2)) qs.set("my_team", myTeamFor(lid2));
     if (wk) qs.set("week", wk);
-    const b = await api(`/api/boxscore?${qs}`);
     const g = (sbData?.games || []).find((x) => x.away === away && x.home === home) || {};
+    const propsReq = showBetting() && g.id
+      ? api(`/api/props?game_id=${encodeURIComponent(g.id)}&season=${encodeURIComponent(sbData?.season || "")}` +
+            `&week=${encodeURIComponent(wk || sbData?.week || "")}&final=${g.state === "post"}`).catch(() => null)
+      : Promise.resolve(null);
+    const b = await api(`/api/boxscore?${qs}`);
     b.game = { ...(b.game || {}), ...g };
+    attachProps(b, g, await propsReq);
     if ((g.state === "in" || g.state === "post") && g.id) {
       try {
         const extra = finalPlays[g.id] || await espnGameDetail(g.id, g.start);
@@ -658,16 +663,18 @@ function renderBox() {
   const { away, home } = sbOpen;
   const g = b.game || {};
 
+  boxRows = [];
   const table = (side) => {
     let lastPos = null;
     const rows = side.players.map((p) => {
       const header = p.pos !== lastPos ? (lastPos = p.pos, `<tr class="posgroup"><td colspan="4">${p.pos}</td></tr>`) : "";
-      return `${header}<tr class="${p.mine ? "mine" : ""}">
+      boxRows.push(p);
+      return `${header}<tr class="${p.mine ? "mine" : ""}${p.pid ? " prow" : ""}" data-row="${boxRows.length - 1}">
         <td class="av"><img class="avatar${p.pos === "DST" ? " logo" : ""}" loading="lazy" alt=""
           src="${esc(p.img)}" data-fallback="${esc(p.team_img)}"></td>
         <td>${esc(p.name)}${injTag(p)}${ownerTag(p)}${p.line ? `<div class="line">${esc(p.line)}</div>` : ""}</td>
         ${b.salaries ? `<td class="num sal">${p.sal ? money(p.sal) : ""}</td>` : ""}
-        <td class="num pts">${p.pts.toFixed(2)}</td>
+        <td class="num pts">${p.pts == null ? "" : p.pts.toFixed(2)}</td>
       </tr>`;
     }).join("");
     const logo = side.team === g.away ? g.away_logo : g.home_logo;
@@ -677,7 +684,9 @@ function renderBox() {
         <span class="title" style="font-size:14px">${esc(side.team)}</span></span>
         ${g.state && g.state !== "pre" ? `<span class="stat pts"><b>${score}</b></span>` : ""}</div>
       ${side.players.length ? `<div class="cardbody"><table><tbody>${rows}</tbody></table></div>`
-        : `<div class="empty" style="padding:20px">No stats yet.</div>`}
+        : `<div class="empty" style="padding:20px">${g.state === "pre"
+          ? (showBetting() && b.props && !b.props.posted ? "Props not posted yet — usually 2–3 days before kickoff." : "Not started.")
+          : "No stats yet."}</div>`}
     </div>`;
   };
 
@@ -701,6 +710,7 @@ function renderBox() {
     ${playsCard(plays, g.state)}
     <div class="two">${b.teams.map(table).join("")}</div></div>${sideGames()}</div>`;
   $("sbBack").addEventListener("click", closeBox);
+  wirePropRows($("sbDetail"));
   $("sbDetail").querySelector("[data-plays]")?.addEventListener("click", () => {
     sbPlaysAll = !sbPlaysAll; renderBox();
   });
@@ -710,8 +720,143 @@ function renderBox() {
   wireAvatarFallback($("sbDetail"));
 }
 
+// ================================================================ props ====
+// DraftKings lines from ESPN (served by /api/props). Before kickoff a box score lists the
+// players who have lines; hovering a row shows the core over/unders, clicking opens the
+// player panel (season by week, lines against results).
+let boxRows = [];
+const PROP_CORE = {
+  QB: ["pass_yd", "pass_td", "pass_int", "rush_yd"], RB: ["rush_yd", "rush_att", "rec", "rec_yd"],
+  WR: ["rec", "rec_yd", "rec_lng"], TE: ["rec", "rec_yd", "rec_lng"], K: ["kick_pts", "fgm", "xpm"],
+};
+const PROP_HEAD = { QB: ["pass_yd", "pass_td", "rush_yd"], RB: ["rush_yd", "rec"], WR: ["rec", "rec_yd"],
+                    TE: ["rec", "rec_yd"], K: ["kick_pts"] };
+const PROP_LABEL = {
+  pass_yd: "pass yds", pass_cmp: "comp", pass_att: "att", pass_td: "pass TD", pass_int: "INT",
+  pass_lng: "long comp", pass_rush_yd: "pass+rush yds", rush_yd: "rush yds", rush_att: "carries",
+  rush_lng: "long rush", rec: "rec", rec_yd: "rec yds", rec_lng: "long rec", rush_rec_yd: "rush+rec yds",
+  kick_pts: "kick pts", fgm: "FG", xpm: "XP",
+};
+const PROP_ORDER = Object.keys(PROP_LABEL);
+const headshot = (id) => `https://a.espncdn.com/i/headshots/nfl/players/full/${id}.png`;
+const propSummary = (pp, pos) => (PROP_HEAD[pos] || []).filter((k) => pp.lines[k])
+  .map((k) => `${pp.lines[k].now} ${PROP_LABEL[k]}`).join(" · ");
+
+function attachProps(b, g, data) {
+  b.props = data;
+  if (!data || !data.players) return;
+  const byName = {};
+  data.players.forEach((p) => { byName[`${p.norm}|${p.team}`] = p; byName[p.norm] = byName[p.norm] || p; });
+  b.teams.forEach((side) => side.players.forEach((p) => {
+    p.prop = byName[`${normName(p.name)}|${side.team}`] || byName[normName(p.name)] || null;
+  }));
+  // before kickoff the box score has no stats: list the players with lines instead
+  if (g.state === "pre" && data.players.length) {
+    const rank = { QB: 0, RB: 1, WR: 2, TE: 3, K: 4 };
+    const lead = (p) => { const k = (PROP_HEAD[p.pos] || [])[0]; return k && p.lines[k] ? p.lines[k].now : 0; };
+    b.teams = [g.away, g.home].map((team) => ({
+      team,
+      players: data.players.filter((p) => p.team === team)
+        .sort((x, y) => (rank[x.pos] ?? 9) - (rank[y.pos] ?? 9) || lead(y) - lead(x))
+        .map((p) => ({ name: p.name, pos: p.pos, team, pid: p.pid, pts: null, prop: p,
+                       line: propSummary(p, p.pos), img: headshot(p.espn_id), team_img: LOGO(team) })),
+    }));
+  }
+}
+
+// hover card: the position's core lines, with movement since the open
+function propTipHtml(p) {
+  const pp = p.prop;
+  const keys = (PROP_CORE[p.pos] || []).filter((k) => pp.lines[k]);
+  if (!keys.length) return "";
+  const rows = keys.map((k) => {
+    const l = pp.lines[k];
+    const move = l.open != null && l.open !== l.now ? `<span class="mv">${l.now > l.open ? "▲" : "▼"} from ${l.open}</span>` : "";
+    return `<tr><td>${PROP_LABEL[k]}</td><td class="num"><b>${l.now}</b></td><td>${move}</td></tr>`;
+  }).join("");
+  return `<div class="pt-name">${esc(p.name)} <span class="muted">${esc(p.pos)} · ${esc(pp.team)}</span></div>
+    <table>${rows}</table><div class="pt-foot">DraftKings via ESPN · click for more</div>`;
+}
+function showPropTip(html, x, y) {
+  let tip = $("propTip");
+  if (!tip) { tip = document.createElement("div"); tip.id = "propTip"; tip.className = "ptip"; document.body.appendChild(tip); }
+  tip.innerHTML = html; tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = `${Math.min(x + 14, window.innerWidth - w - 8)}px`;
+  tip.style.top = `${Math.min(y + 14, window.innerHeight - h - 8)}px`;
+}
+function hidePropTip() { const tip = $("propTip"); if (tip) tip.style.display = "none"; }
+
+function wirePropRows(root) {
+  root.querySelectorAll("tr[data-row]").forEach((tr) => {
+    const p = boxRows[Number(tr.dataset.row)];
+    if (!p) return;
+    if (p.prop && showBetting()) {
+      const html = propTipHtml(p);
+      if (html) {
+        tr.addEventListener("mousemove", (e) => showPropTip(html, e.clientX, e.clientY));
+        tr.addEventListener("mouseleave", hidePropTip);
+      }
+    }
+    if (p.pid) tr.addEventListener("click", () => { hidePropTip(); openPlayer(p); });
+  });
+}
+
+const fmtNum = (v) => v == null ? "" : String(Math.round(v * 10) / 10);
+async function openPlayer(p) {
+  closePlayer();
+  const back = document.createElement("div");
+  back.id = "playerPanel"; back.className = "pp-back";
+  back.innerHTML = `<div class="pp"><div class="pp-head"><span class="pp-title">${esc(p.name)}</span>
+    <button class="small ghost" id="ppClose">✕</button></div><div class="pp-body"><div class="status muted">Loading…</div></div></div>`;
+  document.body.appendChild(back);
+  back.addEventListener("click", (e) => { if (e.target === back) closePlayer(); });
+  $("ppClose").addEventListener("click", closePlayer);
+  const scoring = currentScoring();
+  try {
+    const h = await api(`/api/player?pid=${encodeURIComponent(p.pid)}&scoring=${encodeURIComponent(scoring)}` +
+                        `&leagues=${encodeURIComponent(leagueParam())}`);
+    if (!$("playerPanel")) return;
+    back.querySelector(".pp-title").innerHTML = `${esc(h.name)} <span class="muted">${esc(h.pos)} · ${esc(h.team)}</span>`;
+    back.querySelector(".pp-body").innerHTML = playerPanelHtml(h, p, scoring);
+  } catch (e) {
+    if ($("playerPanel")) back.querySelector(".pp-body").innerHTML = `<div class="warn err">${esc(e.message)}</div>`;
+  }
+}
+function closePlayer() { const el = $("playerPanel"); if (el) el.remove(); }
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePlayer(); });
+
+function playerPanelHtml(h, row, scoring) {
+  const betting = showBetting();
+  const label = (allScoringOpts.find((o) => o.key === scoring) || {}).label || "";
+  const cmp = (v) => !v ? "" : v.actual == null ? `<b>${v.line}</b>`
+    : `<b>${v.line}</b> → ${fmtNum(v.actual)} <span class="hit ${v.hit}">${v.hit === "over" ? "▲" : v.hit === "under" ? "▼" : "="}</span>`;
+  let html = "";
+  // this game's full set of lines
+  if (betting && row.prop) {
+    const keys = PROP_ORDER.filter((k) => row.prop.lines[k]);
+    html += `<h3>This game's lines</h3><table class="pp-t"><thead><tr><th></th><th class="num">Open</th><th class="num">Now</th></tr></thead><tbody>${
+      keys.map((k) => { const l = row.prop.lines[k];
+        return `<tr><td>${PROP_LABEL[k]}</td><td class="num muted">${l.open ?? ""}</td><td class="num"><b>${l.now}</b></td></tr>`; }).join("")
+    }</tbody></table>`;
+  }
+  // season by week
+  const core = (PROP_CORE[h.pos] || []).slice(0, 3);
+  const played = h.weeks.filter((w) => w.played);
+  const total = played.reduce((s, w) => s + (w.pts || 0), 0);
+  html += `<h3>Season · ${esc(label)} <span class="muted">${played.length} games · ${played.length ? (total / played.length).toFixed(2) : "0"} avg</span></h3>
+    <table class="pp-t"><thead><tr><th>Wk</th><th>Opp</th><th class="num">Pts</th>${
+      betting ? core.map((k) => `<th class="num">${PROP_LABEL[k]}</th>`).join("") : "<th>Stats</th>"}</tr></thead><tbody>${
+    h.weeks.slice().reverse().map((w) => `<tr class="${w.played ? "" : "dim"}"><td>${w.week}</td><td>${esc(w.opp || "bye")}</td>
+      <td class="num pts">${w.pts == null ? "–" : w.pts.toFixed(2)}</td>${
+      betting ? core.map((k) => `<td class="num">${cmp(w.props[k])}</td>`).join("")
+              : `<td class="muted">${esc(w.line || "")}</td>`}</tr>`).join("")}</tbody></table>`;
+  if (betting && core.length) html += `<div class="pt-foot">Lines are DraftKings closing lines via ESPN; ▲ over, ▼ under.</div>`;
+  return html;
+}
+
 function closeBox() {
-  sbOpen = null; sbBox = null; sbTicket++;
+  sbOpen = null; sbBox = null; sbTicket++; hidePropTip();
   $("sbDetail").classList.add("hidden");
   $("sbDetail").innerHTML = "";
   $("sbGames").classList.remove("hidden");

@@ -11,6 +11,7 @@ from core.scoreboard import get_scoreboard, game_detail
 from core import sleeper as sleeper_league
 from core import salaries as dk_salaries
 from core.optimal import optimal_lineup
+from core import props as espn_props
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -159,6 +160,32 @@ def scoreboard(season: str = None, week: int = None):
     except Exception as e:
         return {"games": [], "live_games": 0, "upcoming_games": 0,
                 "unavailable": True, "error": str(e)}
+
+
+@app.get("/api/props")
+def props(game_id: str, season: str = None, week: int = None, final: bool = False):
+    """DraftKings player prop lines for one game (ESPN's copy), main over/unders only."""
+    try:
+        data = espn_props.game_props(game_id, season, week, final)
+        return {**data, "players": espn_props.with_sleeper_ids(data["players"])}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        return {"game_id": game_id, "players": [], "posted": False, "error": str(e)}
+
+
+@app.get("/api/player")
+def player(pid: str, scoring: str = "dk", leagues: str = None, season: str = None):
+    """One player's season: weekly fantasy points plus each prop line against the result."""
+    try:
+        if leagues:
+            sleeper_league.register([x.strip() for x in leagues.split(",") if x.strip()])
+        st = live_state()
+        return espn_props.player_history(pid, season or st["season"], scoring, int(st["week"]))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Could not load the player: {e}")
 
 
 @app.get("/api/boxscore")

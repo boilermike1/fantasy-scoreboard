@@ -187,7 +187,7 @@ def box_score(season=None, week=None, away=None, home=None, scoring=DEFAULT_SCOR
         sides[team].append({
             "owner": own["team"] if own else "", "mine": bool(own and own["mine"]),
             "injury": hurt["status"] if hurt else "", "injury_detail": hurt["detail"] if hurt else "",
-            "name": meta["name"], "pos": pos, "team": team, "pts": pts, "line": line,
+            "pid": str(pid), "name": meta["name"], "pos": pos, "team": team, "pts": pts, "line": line,
             "img": (CDN_TEAM.format(team=team.lower()) if pos == "DST"
                     else f"https://sleepercdn.com/content/nfl/players/{pid}.jpg"),
             "team_img": CDN_TEAM.format(team=team.lower()),

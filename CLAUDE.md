@@ -21,6 +21,7 @@ core/      pure logic, no web framework
   live.py        Sleeper stats, DK/PPR/custom scoring tables, the leaderboard
   scoreboard.py  ESPN scoreboard + box scores (server-side copy; see ESPN note below)
   sleeper.py     multi-league support: scoring systems and roster ownership
+  props.py       DraftKings player prop lines from ESPN's core API, weekly archive, player history
   salaries.py    picks a salary table for a slate (DK upload only here)
   dksalaries.py  parses DraftKings' own salary export
   optimal.py     hindsight-best lineup from points already scored
@@ -38,6 +39,16 @@ web/             index.html, app.js, espn.js, style.css
 in-game injuries from each visitor's browser. The server handles Sleeper only. The
 server-side ESPN code in `core/scoreboard.py` still works locally, where requests come
 from a residential IP. **Do not move ESPN calls back to the server.**
+
+**Player props come from ESPN's core API** (`sports.core.api.espn.com/.../odds/100/propBets`,
+provider 100 = DraftKings), fetched on the server: on 2026-10-20 Fly could reach it (and the site API).
+Lines only, no prices; touchdown-scorer markets are listed without any price, so they are dropped.
+Props post about 2–3 days before kickoff and stay after the game. `core/props.py` keeps only the main
+over/unders, resolves ESPN athlete ids to names once (`data/props/athletes.json`) and archives each
+game's lines (`data/props/<season>/w<week>/<game_id>.json`), so closing lines survive ESPN. Players
+are matched to Sleeper by normalized name + team (Sleeper's `espn_id` is missing for most current
+players). Box scores: before kickoff they list the players with lines; hover shows core lines, click
+opens the player panel (`/api/player`: weekly points + line vs result). All hidden by "Show betting lines".
 
 **Never bring ETR projections here.** They're paid and belong to DFS Tools. The ETR file
 readers were removed from this repo on 2026-10-19 so it can be public; salaries come only from
