@@ -31,7 +31,7 @@ Consequences:
 ## Hosting
 
 Fly.io app `fantasy-scoreboard` (Chicago, idles when nobody is on it). Code:
-**https://github.com/boilermike1/fantasy-scoreboard** (private). Pushing to `main` deploys via GitHub
+**https://github.com/boilermike1/fantasy-scoreboard** (public). Pushing to `main` deploys via GitHub
 Actions using the repo secret `FLY_API_TOKEN`.
 
 ```bash
