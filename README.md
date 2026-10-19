@@ -56,8 +56,10 @@ Then open http://localhost:8000.
 ## Tabs
 
 **Scoreboard** — every NFL game for the week. In-progress games (green pulsing dot) sort to the top,
-upcoming next, finals at the bottom. The favorite shows its point spread (e.g. `-3.5`) and an
-upcoming game shows its TV channel after the kickoff time. ESPN drops the line from its scoreboard at kickoff,
+upcoming next, finals at the bottom. Each team shows its **implied points** to two decimals: half the
+over/under plus or minus half the spread (hover for the spread and O/U). Before kickoff they sit where the
+score goes; once the game starts they shrink beside the score. A game with a spread but no total shows the
+spread beside the favorite instead. An upcoming game shows its TV channel after the kickoff time. ESPN drops the line from its scoreboard at kickoff,
 so a started game's closing line comes from its game summary, fetched once and remembered in the browser. Refresh cadence adapts the same way the Live tab's does. Click any game for a fantasy box
 score: QB/RB/WR/TE, K and DST for both teams, grouped by position and sorted by points.
 

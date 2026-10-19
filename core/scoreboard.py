@@ -47,17 +47,22 @@ def _channel(comp):
     return "/".join(CHANNEL_FIX.get(n, n) for n in dict.fromkeys(names))
 
 
-def parse_spread(details, home):
-    """'KC -7.5' -> {"team": "KC", "line": "-7.5"}; a pick'em sits beside the home team."""
+def parse_spread(details, home, total=None):
+    """'KC -7.5' -> {"team": "KC", "line": "-7.5", "total": 44.5}; a pick'em sits beside the
+    home team. total is the game over/under, from which each side's implied points follow."""
     details = str(details or "").strip()
     if not details:
         return None
+    try:
+        total = float(total) if total not in (None, "") else None
+    except (TypeError, ValueError):
+        total = None
     if details.upper() in ("EVEN", "PK", "PICK"):
-        return {"team": home, "line": "PK"}
+        return {"team": home, "line": "PK", "total": total}
     team, _, line = details.rpartition(" ")
     if not team or not line.startswith("-"):
         return None
-    return {"team": _team(team), "line": line}
+    return {"team": _team(team), "line": line, "total": total}
 
 
 def get_scoreboard(season=None, week=None):
@@ -126,7 +131,8 @@ def get_scoreboard(season=None, week=None):
                 "away_score": int(away.get("score") or 0),
                 "state": st.get("state", "pre"),          # pre | in | post
                 "detail": detail,
-                "spread": parse_spread(((comp.get("odds") or [{}])[0]).get("details"), h),
+                "spread": parse_spread(((comp.get("odds") or [{}])[0]).get("details"), h,
+                                       ((comp.get("odds") or [{}])[0]).get("overUnder")),
                 "start": comp.get("date", ""),
             })
         _sb_cache[key] = (time.time(), games)

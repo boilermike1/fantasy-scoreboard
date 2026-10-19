@@ -15,14 +15,16 @@ function channelOf(comp) {
   const names = [...new Set((comp.broadcasts || []).flatMap((b) => b.names || []))];
   return names.map((n) => CHANNEL_FIX[n] || n).join("/");
 }
-function parseSpread(details, home) {
+function parseSpread(details, home, overUnder) {
   const d = String(details || "").trim();
   if (!d) return null;
-  if (["EVEN", "PK", "PICK"].includes(d.toUpperCase())) return { team: home, line: "PK" };
+  const total = overUnder === undefined || overUnder === null || overUnder === "" || Number.isNaN(Number(overUnder))
+    ? null : Number(overUnder);
+  if (["EVEN", "PK", "PICK"].includes(d.toUpperCase())) return { team: home, line: "PK", total };
   const cut = d.lastIndexOf(" ");
   const team = d.slice(0, cut), line = d.slice(cut + 1);
   if (cut < 1 || !line.startsWith("-")) return null;
-  return { team: fixTeam(team), line };
+  return { team: fixTeam(team), line, total };
 }
 
 const CENTRAL = { timeZone: "America/Chicago" };
@@ -72,7 +74,7 @@ async function espnScoreboard(season, week) {
       detail: st.state === "pre" && comp.date
         ? centralTime(comp.date) + (channelOf(comp) ? ` - ${channelOf(comp)}` : "")
         : (st.shortDetail || ""),
-      spread: parseSpread(((comp.odds || [{}])[0] || {}).details, h),
+      spread: parseSpread(((comp.odds || [{}])[0] || {}).details, h, ((comp.odds || [{}])[0] || {}).overUnder),
       start: comp.date || "",
       situation,
     };
@@ -210,7 +212,8 @@ async function espnGameDetail(gameId, startIso) {
 // ESPN drops the line from the scoreboard at kickoff; the game summary keeps the closing one
 async function espnSpread(gameId, home) {
   const data = await espnJson(`${ESPN_SUM}?event=${gameId}`);
-  return parseSpread(((data.pickcenter || [])[0] || {}).details, home);
+  const pick = (data.pickcenter || [])[0] || {};
+  return parseSpread(pick.details, home, pick.overUnder);
 }
 
 // must match core/loader.py _norm so names line up with the server's rows

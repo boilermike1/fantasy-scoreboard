@@ -34,13 +34,28 @@ const BALL = `<svg class="poss" viewBox="0 0 24 14" aria-hidden="true"><title>Ha
 </svg>`;
 const hasBall = (g, team) => !!(g.situation && g.situation.possession === team);
 
-// point spread beside the favored team
-const spreadTag = (g, team) => g.spread && g.spread.team === team
+// Each team's implied points: half the over/under, plus or minus half the spread. When a
+// game has a spread but no total, the spread sits beside the favorite instead.
+function implied(g, team) {
+  const s = g.spread;
+  if (!s || s.total === null || s.total === undefined) return null;
+  const half = s.line === "PK" ? 0 : Math.abs(parseFloat(s.line)) / 2;
+  return s.total / 2 + (s.team === team ? half : -half);
+}
+const lineTitle = (g) => g.spread
+  ? `${g.spread.team} ${g.spread.line}${g.spread.total != null ? ` · O/U ${g.spread.total}` : ""}` : "";
+const spreadTag = (g, team) => g.spread && g.spread.team === team && implied(g, team) === null
   ? `<span class="spread" title="Point spread">${esc(g.spread.line)}</span>` : "";
+// implied total in the score slot before kickoff, small beside the score after
+function impTag(g, team) {
+  const v = implied(g, team);
+  if (v === null) return "";
+  return `<span class="imp${g.state === "pre" ? "" : " sm"}" title="Implied points · ${esc(lineTitle(g))}">${v.toFixed(2)}</span>`;
+}
 
 // ESPN only lists the line before kickoff. Lines seen then are remembered in this browser,
 // and a started game's closing line is fetched from its summary once and kept.
-const SPREADS = "scoreboard.spreads";     // game id -> {team, line, closed}
+const SPREADS = "scoreboard.lines";       // game id -> {team, line, total, closed}
 const spreadTried = new Set();
 function applySpreads(games) {
   const all = prefGet(SPREADS, {}) || {};
@@ -50,7 +65,7 @@ function applySpreads(games) {
     if (g.spread && g.state === "pre") {
       if (JSON.stringify(all[g.id]) !== JSON.stringify(g.spread)) { all[g.id] = g.spread; changed = true; }
     } else if (!g.spread && all[g.id]) {
-      g.spread = { team: all[g.id].team, line: all[g.id].line };
+      g.spread = { team: all[g.id].team, line: all[g.id].line, total: all[g.id].total ?? null };
     }
   });
   if (changed) prefSet(SPREADS, all);
@@ -492,7 +507,8 @@ function renderGames() {
       <img src="${esc(side === "away" ? g.away_logo : g.home_logo)}" alt="" loading="lazy">
       <span class="tm">${esc(side === "away" ? g.away : g.home)}${
         hasBall(g, side === "away" ? g.away : g.home) ? BALL : ""}${spreadTag(g, side === "away" ? g.away : g.home)}</span>
-      <span class="sc">${g.state === "pre" ? "" : them}</span>
+      ${impTag(g, side === "away" ? g.away : g.home)}
+      ${g.state === "pre" ? "" : `<span class="sc">${them}</span>`}
     </div>`;
   };
   $("sbGames").innerHTML = sbData.games.map((g) => `
@@ -582,7 +598,7 @@ function sideGames() {
   if (!others.length) return "";
   const line = (t, s, g, lost) => `<div class="sgrow ${lost ? "lost" : ""}">
     <img src="${esc(LOGO(t))}" alt="" loading="lazy"><span>${esc(t)}${hasBall(g, t) ? BALL : ""}${spreadTag(g, t)}</span>
-    <b>${g.state === "pre" ? "" : s}</b></div>`;
+    ${impTag(g, t)}${g.state === "pre" ? "" : `<b>${s}</b>`}</div>`;
   return `<aside class="sidegames">${others.map((g) => `
     <div class="sgame ${g.state === "in" ? "inprog" : ""}" data-away="${esc(g.away)}" data-home="${esc(g.home)}">
       <div class="sgstatus">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.detail)}</div>

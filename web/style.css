@@ -247,3 +247,9 @@ font-size:11px;color:var(--muted)}
 /* point spread beside the favorite */
 .spread{margin-left:6px;font-size:11px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
 .sgrow .spread{margin-left:4px;font-size:10px}
+/* implied team total: the score slot before kickoff, small and muted beside the score after */
+.imp{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600;font-size:14px;cursor:help}
+.imp.sm{font-size:11px;font-weight:500;margin-right:8px}
+.sgrow .imp{margin-left:auto;font-size:11px}
+.sgrow .imp.sm{font-size:10px;margin-right:6px}
+.sgrow .imp + b{margin-left:0}
