@@ -34,9 +34,13 @@ const BALL = `<svg class="poss" viewBox="0 0 24 14" aria-hidden="true"><title>Ha
 </svg>`;
 const hasBall = (g, team) => !!(g.situation && g.situation.possession === team);
 
+// Betting lines (spreads, totals, results) can be hidden on the Scoreboard; shown by default.
+const showBetting = () => prefGet("sb.betting", true) !== false;
+
 // Each team's implied points: half the over/under, plus or minus half the spread. When a
 // game has a spread but no total, the spread sits beside the favorite instead.
 function implied(g, team) {
+  if (!showBetting()) return null;
   const s = g.spread;
   if (!s || s.total === null || s.total === undefined) return null;
   const half = s.line === "PK" ? 0 : Math.abs(parseFloat(s.line)) / 2;
@@ -44,7 +48,7 @@ function implied(g, team) {
 }
 const lineTitle = (g) => g.spread
   ? `${g.spread.team} ${g.spread.line}${g.spread.total != null ? ` · O/U ${g.spread.total}` : ""}` : "";
-const spreadTag = (g, team) => g.spread && g.spread.team === team && implied(g, team) === null
+const spreadTag = (g, team) => showBetting() && g.spread && g.spread.team === team && implied(g, team) === null
   ? `<span class="spread" title="Point spread">${esc(g.spread.line)}</span>` : "";
 // The card's top line: kickoff, channel and spread before the game; for a final, how the
 // spread and total came out ("CLE covered +3 · Under 39.5").
@@ -70,6 +74,7 @@ function bettingResult(g) {
 }
 function statusText(g) {
   const base = g.detail || "";
+  if (!showBetting()) return base;
   if (g.state === "pre" && g.spread) return `${base} - ${g.spread.team} ${g.spread.line}`;
   if (g.state === "post") { const r = bettingResult(g); return r ? `${base} · ${r}` : base; }
   return base;
@@ -716,6 +721,12 @@ $("sbScoring").addEventListener("change", () => setScoringEverywhere($("sbScorin
 $("sbWeek").addEventListener("change", () => { closeBox(); loadScoreboard(false); });
 $("sbRefresh").addEventListener("click", () => loadScoreboard());
 $("sbAuto").addEventListener("change", setSbTimer);
+$("sbBetting").checked = showBetting();
+$("sbBetting").addEventListener("change", () => {
+  prefSet("sb.betting", $("sbBetting").checked);
+  renderGames();
+  if (sbOpen) renderBox();
+});
 document.querySelector('.tab[data-tab="scoreboard"]').addEventListener("click", () => {
   loadScoreboard(); setSbTimer();
 });
