@@ -1,6 +1,6 @@
 """DraftKings' own salary export — the file you download from a contest's player list.
 
-Unlike the ETR projections this is public DraftKings data, so it is safe to use on the
+This is public DraftKings data, so it is safe to use on the
 public site. Handles both classic exports and showdown exports (which list each player
 twice, once as CPT and once as FLEX).
 

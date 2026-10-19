@@ -73,7 +73,7 @@ SCHED_TTL = 60               # game status changes during the day
 
 
 def _get(url, timeout=25):
-    req = urllib.request.Request(url, headers={"User-Agent": "dfs-tools/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "fantasy-scoreboard/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 

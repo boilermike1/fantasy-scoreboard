@@ -1,5 +1,5 @@
 # Never ship these to a public server:
-data/            # uploaded ETR projections (paid content) and config.json (password)
+data/            # uploaded salary files and caches (server state, not code)
 output/
 *.csv
 .DS_Store

@@ -1,4 +1,4 @@
-# Never commit these — they contain the site password and paid ETR projections
+# Never commit these: uploaded salary files and caches are server state, not code
 data/
 output/
 output_vele_jj/
