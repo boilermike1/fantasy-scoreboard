@@ -110,6 +110,7 @@ def _system_from(settings, label):
         "kicker": {**live.KICKER, **pick(kicker_keys)},
         "bonuses": bonus,
         "pts_allow": tiers or live.PTS_ALLOW,
+        "return_td": float(settings.get("st_td", live.RETURN_TD)),   # Sleeper's special teams TD
     }
 
 

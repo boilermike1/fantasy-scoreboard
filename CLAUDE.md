@@ -102,6 +102,14 @@ and creates duplicate apps. Use `fly deploy`, or just push to `main`.
   `no-cache` plus version-stamped asset URLs. If a change "doesn't appear", suspect this.
 - Position visibility stores *hidden* positions, not shown ones, so a newly added
   position (e.g. `ALL` for single-game view) defaults to visible.
+- Sleeper's stat keys don't line up with DK's rules (`dk_points` in `core/live.py`, fixed
+  2026-10-19, same fix as dfs-tools' copy). Return TDs are `st_td` since 2020 (`kr_td`/`pr_td`
+  before), minus `misc_td` (blocked-kick recoveries, which DK doesn't credit), worth the system's
+  `return_td` (a Sleeper league's own `st_td` setting); offensive fumble-recovery TDs are
+  `fum_rec_td`; DST `fum_rec` leaves out special teams recoveries (`def_st_fum_rec`); `pts_allow`
+  already nets out what the opponent's defense scored, as DK does. Checked against DK's points
+  (RotoGuru) 2020 W6–2021: DST 98.3% exact (was 93.0%), offense 99.7%. Sleeper's 2018–19 stats
+  use an older format, so don't score those years with `dk_points`.
 - macOS caches failed DNS lookups; a new subdomain can appear dead on a machine that
   checked before the records existed. `sudo dscacheutil -flushcache`.
 

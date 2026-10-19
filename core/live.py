@@ -35,10 +35,15 @@ OFFENSE = {
     "pass_yd": 0.04, "pass_td": 4, "pass_int": -1, "pass_2pt": 2,
     "rush_yd": 0.1, "rush_td": 6, "rush_2pt": 2,
     "rec": 1.0, "rec_yd": 0.1, "rec_td": 6, "rec_2pt": 2,
-    "fum_lost": -1, "kr_td": 6, "pr_td": 6,
+    "fum_lost": -1, "fum_rec_td": 6,
 }
+RETURN_TD = 6                         # kick/punt return TDs; see dk_points
+# fum_rec leaves out special teams recoveries (muffed punts etc.), which DK counts. pts_allow
+# already nets out TDs and safeties the opponent's defense scored against this team's offense,
+# as DK does. Both hold from 2020; Sleeper's 2018-19 stats folded the special teams recoveries
+# into fum_rec and (mostly) gave the raw score as pts_allow.
 DST = {
-    "sack": 1, "int": 2, "fum_rec": 2, "safe": 2, "blk_kick": 2,
+    "sack": 1, "int": 2, "fum_rec": 2, "def_st_fum_rec": 2, "safe": 2, "blk_kick": 2,
     "def_td": 6, "st_td": 6, "def_st_td": 6, "def_2pt": 2,
 }
 KICKER = {
@@ -52,7 +57,7 @@ PTS_ALLOW = [(0, 10), (6, 7), (13, 4), (20, 1), (27, 0), (34, -1), (10 ** 6, -4)
 def _system(label, offense=None, dst=None, kicker=None, bonuses=True, pts_allow=None):
     return {"label": label, "offense": {**OFFENSE, **(offense or {})},
             "dst": {**DST, **(dst or {})}, "kicker": {**KICKER, **(kicker or {})},
-            "bonuses": bonuses, "pts_allow": pts_allow or PTS_ALLOW}
+            "bonuses": bonuses, "pts_allow": pts_allow or PTS_ALLOW, "return_td": RETURN_TD}
 
 
 TURNOVERS_2 = {"pass_int": -2, "fum_lost": -2}
@@ -183,6 +188,10 @@ def dk_points(s, pos, scoring=DEFAULT_SCORING):
         return round(pts, 2)
 
     pts = sum(mult * g(k) for k, mult in sysr["offense"].items())
+    # Kick/punt return TDs: kr_td/pr_td until 2019, st_td since. st_td also counts recovering
+    # a blocked kick or a kickoff for a TD, which DK doesn't credit; from 2023 those are
+    # flagged as misc_td (a kickoff recovery isn't, and costs 6 points, about once a season).
+    pts += sysr["return_td"] * max(g("kr_td") + g("pr_td"), g("st_td") - g("misc_td"), 0)
     if sysr["bonuses"]:
         if g("pass_yd") >= 300: pts += 3
         if g("rush_yd") >= 100: pts += 3
@@ -197,9 +206,11 @@ def _statline(s, pos, avg=False):
     n = lambda v: f"{v:.1f}" if avg else f"{v:.0f}"
     bits = []
     if pos == "DST":
-        for label, key in (("sk", "sack"), ("int", "int"), ("fr", "fum_rec"),
-                           ("TD", "def_td"), ("saf", "safe")):
-            if g(key): bits.append(f"{n(g(key))} {label}")
+        counts = {"sk": g("sack"), "int": g("int"),
+                  "fr": g("fum_rec") + g("def_st_fum_rec"),     # both score as recoveries
+                  "TD": g("def_td"), "saf": g("safe")}
+        for label, v in counts.items():
+            if v: bits.append(f"{n(v)} {label}")
         if s.get("pts_allow") is not None: bits.append(f"{n(g('pts_allow'))} PA")
         return ", ".join(bits)
     if pos == "K":
