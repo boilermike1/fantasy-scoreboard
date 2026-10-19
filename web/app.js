@@ -75,7 +75,9 @@ function bettingResult(g) {
 function statusText(g) {
   const base = g.detail || "";
   if (!showBetting()) return base;
-  if (g.state === "pre" && g.spread) return `${base} - ${g.spread.team} ${g.spread.line}`;
+  if (g.state === "pre" && g.spread) {
+    return `${base} - ${g.spread.team} ${g.spread.line}` + (g.spread.total != null ? ` - O/U ${g.spread.total}` : "");
+  }
   if (g.state === "post") { const r = bettingResult(g); return r ? `${base} · ${r}` : base; }
   return base;
 }

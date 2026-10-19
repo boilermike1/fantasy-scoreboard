@@ -39,12 +39,13 @@ def _team(abbr):
 
 
 # ESPN's network names, tidied for display
-CHANNEL_FIX = {"Fox": "FOX", "NFL Net": "NFL Network"}
+CHANNEL_FIX = {"Fox": "FOX", "NFL Net": "NFLN", "Prime Video": "Prime"}
 
 
 def _channel(comp):
+    """The first network listed: simulcasts like ESPN/ABC/Disney+ would crowd the card."""
     names = [n for b in comp.get("broadcasts", []) for n in (b.get("names") or [])]
-    return "/".join(CHANNEL_FIX.get(n, n) for n in dict.fromkeys(names))
+    return CHANNEL_FIX.get(names[0], names[0]) if names else ""
 
 
 def parse_spread(details, home, total=None):

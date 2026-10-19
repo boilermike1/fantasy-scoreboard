@@ -10,10 +10,11 @@ const LOGO = (t) => `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCas
 const fixTeam = (t) => { const a = String(t || "").toUpperCase(); return TEAM_FIX[a] || a; };
 
 // mirrors core/scoreboard.py: CHANNEL_FIX, _channel, parse_spread
-const CHANNEL_FIX = { "Fox": "FOX", "NFL Net": "NFL Network" };
+const CHANNEL_FIX = { "Fox": "FOX", "NFL Net": "NFLN", "Prime Video": "Prime" };
 function channelOf(comp) {
-  const names = [...new Set((comp.broadcasts || []).flatMap((b) => b.names || []))];
-  return names.map((n) => CHANNEL_FIX[n] || n).join("/");
+  // the first network listed: simulcasts like ESPN/ABC/Disney+ would crowd the card
+  const first = (comp.broadcasts || []).flatMap((b) => b.names || [])[0];
+  return first ? (CHANNEL_FIX[first] || first) : "";
 }
 function parseSpread(details, home, overUnder) {
   const d = String(details || "").trim();
