@@ -56,7 +56,7 @@ Then open http://localhost:8000.
 ## Tabs
 
 **Scoreboard** — every NFL game for the week. In-progress games (green pulsing dot) sort to the top,
-upcoming next, finals at the bottom. Each team shows its **implied points** to two decimals: half the
+upcoming next, finals at the bottom. Each team shows its **implied points** (only the decimals needed, e.g. 26.25, 24.5, 22): half the
 over/under plus or minus half the spread (hover for the spread and O/U). Before kickoff they sit where the
 score goes; once the game starts they shrink beside the score. A game with a spread but no total shows the
 spread beside the favorite instead. An upcoming game shows its TV channel after the kickoff time. ESPN drops the line from its scoreboard at kickoff,

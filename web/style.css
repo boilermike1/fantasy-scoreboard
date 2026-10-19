@@ -253,3 +253,5 @@ font-size:11px;color:var(--muted)}
 .sgrow .imp{margin-left:auto;font-size:11px}
 .sgrow .imp.sm{font-size:10px;margin-right:6px}
 .sgrow .imp + b{margin-left:0}
+.sitefoot a{color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.sitefoot a:hover{color:var(--text)}

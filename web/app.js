@@ -50,7 +50,7 @@ const spreadTag = (g, team) => g.spread && g.spread.team === team && implied(g, 
 function impTag(g, team) {
   const v = implied(g, team);
   if (v === null) return "";
-  return `<span class="imp${g.state === "pre" ? "" : " sm"}" title="Implied points · ${esc(lineTitle(g))}">${v.toFixed(2)}</span>`;
+  return `<span class="imp${g.state === "pre" ? "" : " sm"}" title="Implied points · ${esc(lineTitle(g))}">${Number(v.toFixed(2))}</span>`;
 }
 
 // ESPN only lists the line before kickoff. Lines seen then are remembered in this browser,
