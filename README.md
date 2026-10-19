@@ -55,7 +55,8 @@ Then open http://localhost:8000.
 
 ## Tabs
 
-**Scoreboard** — every NFL game for the week. In-progress games (green pulsing dot) sort to the top,
+**Scoreboard** — every NFL game for the week. The week menu covers the whole regular season (1–18): future weeks
+show the schedule, with channels and lines once ESPN posts them and `TBD` for games not yet given a kickoff time. In-progress games (green pulsing dot) sort to the top,
 upcoming next, finals at the bottom. Each team shows its **implied points** (only the decimals needed, e.g. 26.25, 24.5, 22): half the
 over/under plus or minus half the spread (hover for the spread and O/U). Before kickoff they sit where the
 score goes; once the game starts they shrink beside the score. A game with a spread but no total shows the

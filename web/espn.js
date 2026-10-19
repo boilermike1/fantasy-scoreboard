@@ -72,7 +72,7 @@ async function espnScoreboard(season, week) {
       home_score: Number(home.score || 0), away_score: Number(away.score || 0),
       state: st.state || "pre",
       detail: st.state === "pre" && comp.date
-        ? centralTime(comp.date) + (channelOf(comp) ? ` - ${channelOf(comp)}` : "")
+        ? (comp.timeValid === false ? "TBD" : centralTime(comp.date)) + (channelOf(comp) ? ` - ${channelOf(comp)}` : "")
         : (st.shortDetail || ""),
       spread: parseSpread(((comp.odds || [{}])[0] || {}).details, h, ((comp.odds || [{}])[0] || {}).overUnder),
       start: comp.date || "",

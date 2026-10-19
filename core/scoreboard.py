@@ -96,14 +96,16 @@ def get_scoreboard(season=None, week=None):
             h, a = _team(home["team"].get("abbreviation")), _team(away["team"].get("abbreviation"))
 
             detail = st.get("shortDetail", "")
-            if st.get("state") == "pre" and comp.get("date"):
+            if st.get("state") == "pre" and comp.get("timeValid") is False:
+                detail = "TBD"                     # not scheduled yet (late-season flex)
+            elif st.get("state") == "pre" and comp.get("date"):
                 try:
                     kick = datetime.fromisoformat(comp["date"].replace("Z", "+00:00")).astimezone(TZ)
                     detail = kick.strftime("%-m/%-d - %-I:%M %p %Z")
                 except Exception:
                     pass
-                if _channel(comp):
-                    detail += f" - {_channel(comp)}"
+            if st.get("state") == "pre" and _channel(comp):
+                detail += f" - {_channel(comp)}"
 
             situation = None
             sit = comp.get("situation") or {}

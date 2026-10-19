@@ -483,6 +483,7 @@ setLiveTimer();
 
 // ================================================================ scoreboard ====
 let sbTimer = null, sbLoading = false, sbPending = false, sbData = null, sbOpen = null;
+const REGULAR_WEEKS = 18;
 let sbBox = null, sbPlaysAll = false, sbTicket = 0;
 const finalPlays = {};        // ESPN game id -> detail, for games already final
 
@@ -502,7 +503,8 @@ async function loadScoreboard(keepDetail = true) {
     $("sbError").innerHTML = "";
 
     if (!$("sbWeek").options.length) {
-      for (let w = r.current_week; w >= 1; w--) {
+      // the whole regular season: past weeks for results, future ones for the schedule
+      for (let w = 1; w <= REGULAR_WEEKS; w++) {
         const o = document.createElement("option");
         o.value = w; o.textContent = `Week ${w}${w === r.current_week ? " (current)" : ""}`;
         $("sbWeek").appendChild(o);
@@ -677,7 +679,8 @@ function renderBox() {
   $("sbDetail").innerHTML = `<div class="boxwrap"><div class="boxmain">
     <div class="boxhead">
       <button id="sbBack" class="small">← All games</button>
-      <span class="score">${esc(away)} ${g.away_score ?? ""} @ ${esc(home)} ${g.home_score ?? ""}</span>
+      <span class="score">${g.state === "pre" ? `${esc(away)} @ ${esc(home)}`
+        : `${esc(away)} ${g.away_score ?? ""} @ ${esc(home)} ${g.home_score ?? ""}`}</span>
       <span class="status muted">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(statusText(g))} · ${esc(b.scoring_label)} scoring</span>
     </div>
     ${sit ? `<div class="card" style="margin-bottom:14px"><div class="head">
