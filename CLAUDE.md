@@ -63,7 +63,10 @@ displayed scores — snapshot before and after.
 **Sleeper omits `pts_allow` for a shutout** rather than sending zero, which silently
 cost defenses their +10. `normalize_dst()` handles it; don't "simplify" it away.
 
-**Times are pinned to US Central** regardless of server locale. ESPN reports Eastern.
+**Kickoff times show in the visitor's own time zone** (no zone label), built in the browser from
+`start` (`kickoffTime` in espn.js), since 2026-10-20. Server-side timestamps ("updated …") stay US Central
+regardless of server locale. Slate windows (early/late/island) are classified in Eastern, as the NFL
+defines them. ESPN reports Eastern.
 
 ## Deployment
 

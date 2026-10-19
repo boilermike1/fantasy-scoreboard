@@ -72,12 +72,19 @@ function bettingResult(g) {
   }
   return out.join(" · ");
 }
+// before kickoff: local time (or TBD), then channel, spread and total, dot-separated
+const kickoff = (g) => g.time_tbd ? "TBD" : (g.start ? kickoffTime(g.start) : g.detail || "");
 function statusText(g) {
+  if (g.state === "pre") {
+    const bits = [kickoff(g), g.channel];
+    if (showBetting() && g.spread) {
+      bits.push(`${g.spread.team} ${g.spread.line}`);
+      if (g.spread.total != null) bits.push(`O/U ${g.spread.total}`);
+    }
+    return bits.filter(Boolean).join(" · ");
+  }
   const base = g.detail || "";
   if (!showBetting()) return base;
-  if (g.state === "pre" && g.spread) {
-    return `${base} - ${g.spread.team} ${g.spread.line}` + (g.spread.total != null ? ` - O/U ${g.spread.total}` : "");
-  }
   if (g.state === "post") { const r = bettingResult(g); return r ? `${base} · ${r}` : base; }
   return base;
 }
@@ -639,7 +646,7 @@ function sideGames() {
     ${impTag(g, t)}${g.state === "pre" ? "" : `<b>${s}</b>`}</div>`;
   return `<aside class="sidegames">${others.map((g) => `
     <div class="sgame ${g.state === "in" ? "inprog" : ""}" data-away="${esc(g.away)}" data-home="${esc(g.home)}">
-      <div class="sgstatus" title="${esc(statusText(g))}">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(statusText(g))}</div>
+      <div class="sgstatus" title="${esc(statusText(g))}">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.state === "pre" ? kickoff(g) : statusText(g))}</div>
       ${line(g.away, g.away_score, g, g.state === "post" && g.away_score < g.home_score)}
       ${line(g.home, g.home_score, g, g.state === "post" && g.home_score < g.away_score)}
     </div>`).join("")}</aside>`;

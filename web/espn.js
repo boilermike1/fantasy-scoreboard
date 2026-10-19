@@ -28,12 +28,12 @@ function parseSpread(details, home, overUnder) {
   return { team: fixTeam(team), line, total };
 }
 
-const CENTRAL = { timeZone: "America/Chicago" };
-function centralTime(iso) {
+// Kickoffs show in the visitor's own time zone, without a zone label to save space.
+function kickoffTime(iso) {
   try {
     const d = new Date(iso);
-    return d.toLocaleString("en-US", { ...CENTRAL, month: "numeric", day: "numeric" }).split(",")[0] +
-      " - " + d.toLocaleString("en-US", { ...CENTRAL, hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+    return d.toLocaleString("en-US", { month: "numeric", day: "numeric" }) + " " +
+      d.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
   } catch { return ""; }
 }
 
@@ -72,9 +72,9 @@ async function espnScoreboard(season, week) {
       home_logo: LOGO(h), away_logo: LOGO(a),
       home_score: Number(home.score || 0), away_score: Number(away.score || 0),
       state: st.state || "pre",
-      detail: st.state === "pre" && comp.date
-        ? (comp.timeValid === false ? "TBD" : centralTime(comp.date)) + (channelOf(comp) ? ` - ${channelOf(comp)}` : "")
-        : (st.shortDetail || ""),
+      detail: st.state === "pre" ? "" : (st.shortDetail || ""),   // pre-game line is built in app.js
+      channel: channelOf(comp),
+      time_tbd: comp.timeValid === false,
       spread: parseSpread(((comp.odds || [{}])[0] || {}).details, h, ((comp.odds || [{}])[0] || {}).overUnder),
       start: comp.date || "",
       situation,
@@ -113,7 +113,7 @@ function espnSlates(games) {
     else if (kind === "late") { late.add(g.away); late.add(g.home); }
     else {
       const when = new Date(g.start).toLocaleString("en-US", {
-        ...CENTRAL, weekday: "short", hour: "numeric", minute: "2-digit" });
+        weekday: "short", hour: "numeric", minute: "2-digit" });
       islands.push({ key: `game:${g.away}-${g.home}`, label: `${when} · ${g.away} @ ${g.home}`,
                      teams: [g.away, g.home].sort(), start: g.start });
     }

@@ -61,7 +61,8 @@ upcoming next, finals at the bottom. Each team shows its **implied points** (onl
 over/under plus or minus half the spread (hover for the spread and O/U). Before kickoff they sit where the
 score goes; once the game starts they shrink beside the score. A game with a spread but no total shows the
 spread beside the favorite instead. The top line of an upcoming game shows its kickoff, TV channel and spread
-(`- ESPN - SF -7.5 - O/U 51.5`; first network only, NFLN and Prime abbreviated); a final shows how the spread and total came out (`Final · CLE covered +3 · Under 40.5`). **Show betting
+(`10/19 7:15 PM · ESPN · SF -7.5 · O/U 51.5`, kickoff in the visitor's own time zone; first network only,
+NFLN and Prime abbreviated). In the box-score side bar an upcoming game shows just its kickoff over the team totals; a final shows how the spread and total came out (`Final · CLE covered +3 · Under 40.5`). **Show betting
 lines** on the Settings tab hides all of it (on by default, remembered per browser). ESPN drops the line from its scoreboard at kickoff,
 so a started game's closing line comes from its game summary, fetched once and remembered in the browser. Refresh cadence adapts the same way the Live tab's does. Click any game for a fantasy box
 score: QB/RB/WR/TE, K and DST for both teams, grouped by position and sorted by points.

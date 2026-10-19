@@ -134,6 +134,8 @@ def get_scoreboard(season=None, week=None):
                 "away_score": int(away.get("score") or 0),
                 "state": st.get("state", "pre"),          # pre | in | post
                 "detail": detail,
+                "channel": _channel(comp),
+                "time_tbd": comp.get("timeValid") is False,
                 "spread": parse_spread(((comp.get("odds") or [{}])[0]).get("details"), h,
                                        ((comp.get("odds") or [{}])[0]).get("overUnder")),
                 "start": comp.get("date", ""),
