@@ -1,11 +1,10 @@
 """DraftKings salaries.
 
 DraftKings has no public API for salaries, so they come from DK's own salary export,
-uploaded on the Settings tab and kept per NFL week (see dk_for_week). The ETR readers
-below are left from the shared codebase; this site never enables them (allow_etr=False).
+uploaded on the Settings tab and kept per NFL week (see dk_for_week).
 
-Matching: offensive players by normalized name, defenses by team — ETR names defenses
-by nickname ("Jaguars") while Sleeper uses the full name ("Jacksonville Jaguars").
+Matching: offensive players by normalized name, defenses by team (DK and Sleeper name
+defenses differently).
 """
 import hashlib
 import json
@@ -15,16 +14,13 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from .loader import load_projections, _norm
-from .showdown import load_showdown
+from .loader import _norm
 
 UPLOADS = Path(__file__).resolve().parent.parent / "data" / "uploads"
-PROJ_PATH = UPLOADS / "projections.csv"
 DK_PATH = UPLOADS / "dk_salaries.csv"
-SD_PATH = UPLOADS / "showdown.csv"
 TTL = 60
 
-# ETR's abbreviations differ from Sleeper's in one place
+# DK's abbreviations differ from Sleeper's in a few places
 TEAM_ALIASES = {"LA": "LAR", "WSH": "WAS", "JAC": "JAX"}
 
 _cache = {}
@@ -33,39 +29,6 @@ _cache = {}
 def _team(t):
     t = (t or "").upper()
     return TEAM_ALIASES.get(t, t)
-
-
-def _build(df, showdown):
-    """name/team -> salary lookup, plus the set of teams the file covers."""
-    out = {"by_name": {}, "by_dst": {}, "teams": set(), "showdown": showdown}
-    for _, r in df.iterrows():
-        team = _team(r["team"])
-        out["teams"].add(team)
-        entry = {"sal": int(r["sal"])}
-        if showdown:
-            entry["cpt_sal"] = int(r["cpt_sal"])
-        if r["pos"] == "DST":
-            out["by_dst"][team] = entry
-        else:
-            out["by_name"][_norm(r["name"])] = entry
-    return out
-
-
-def _load(path, showdown):
-    key = str(path)
-    hit = _cache.get(key)
-    stamp = path.stat().st_mtime if path.exists() else 0
-    if hit and hit[0] == stamp and time.time() - hit[1] < TTL:
-        return hit[2]
-    if not path.exists():
-        return None
-    try:
-        df = load_showdown(path) if showdown else load_projections(path)
-        data = _build(df, showdown)
-    except Exception:
-        return None
-    _cache[key] = (stamp, time.time(), data)
-    return data
 
 
 # ---- DraftKings exports, kept per NFL week ----
@@ -200,38 +163,11 @@ def dk_for_week(season, week, teams=None, prefer_showdown=False):
     return best
 
 
-def main_salaries():
-    return _load(PROJ_PATH, showdown=False)
-
-
-def showdown_salaries():
-    return _load(SD_PATH, showdown=True)
-
-
-def for_slate(slate_teams=None, allow_etr=True, season=None, week=None, prefer_showdown=False):
-    """Pick the right salary table for the slate being viewed.
-
-    A DraftKings export wins when it covers the slate — it is public data, so it works
-    on the public site too. ETR files are the fallback and only when allow_etr is set.
-    """
-    want = {_team(t) for t in (slate_teams or [])}
-
-    if season and week:
-        dk = dk_for_week(season, week, want, prefer_showdown)
-        if dk:
-            return dk
-
-    if not allow_etr:
+def for_slate(slate_teams=None, season=None, week=None, prefer_showdown=False):
+    """The stored DK salary table for the slate being viewed, or None."""
+    if not (season and week):
         return None
-
-    if len(want) == 2:
-        sd = showdown_salaries()
-        if sd and sd["teams"] == want:
-            return sd
-    table = main_salaries()
-    if want and table and not (want & table["teams"]):
-        return None
-    return table
+    return dk_for_week(season, week, {_team(t) for t in (slate_teams or [])}, prefer_showdown)
 
 
 def lookup(table, name, team, pos):

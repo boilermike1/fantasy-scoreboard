@@ -46,6 +46,35 @@ const lineTitle = (g) => g.spread
   ? `${g.spread.team} ${g.spread.line}${g.spread.total != null ? ` · O/U ${g.spread.total}` : ""}` : "";
 const spreadTag = (g, team) => g.spread && g.spread.team === team && implied(g, team) === null
   ? `<span class="spread" title="Point spread">${esc(g.spread.line)}</span>` : "";
+// The card's top line: kickoff, channel and spread before the game; for a final, how the
+// spread and total came out ("CLE covered +3 · Under 39.5").
+function bettingResult(g) {
+  const s = g.spread;
+  if (!s) return "";
+  const out = [];
+  const favScore = s.team === g.home ? g.home_score : g.away_score;
+  const dog = s.team === g.home ? g.away : g.home;
+  const dogScore = s.team === g.home ? g.away_score : g.home_score;
+  if (s.line === "PK") {
+    if (favScore !== dogScore) out.push(`${favScore > dogScore ? s.team : dog} covered PK`);
+  } else {
+    const pts = Math.abs(parseFloat(s.line)), margin = favScore - dogScore;
+    out.push(margin > pts ? `${s.team} covered ${s.line}`
+      : margin < pts ? `${dog} covered +${pts}` : `Push ${s.line}`);
+  }
+  if (s.total != null) {
+    const sum = g.home_score + g.away_score;
+    out.push(`${sum > s.total ? "Over" : sum < s.total ? "Under" : "Push"} ${s.total}`);
+  }
+  return out.join(" · ");
+}
+function statusText(g) {
+  const base = g.detail || "";
+  if (g.state === "pre" && g.spread) return `${base} - ${g.spread.team} ${g.spread.line}`;
+  if (g.state === "post") { const r = bettingResult(g); return r ? `${base} · ${r}` : base; }
+  return base;
+}
+
 // implied total in the score slot before kickoff, small beside the score after
 function impTag(g, team) {
   const v = implied(g, team);
@@ -513,7 +542,7 @@ function renderGames() {
   };
   $("sbGames").innerHTML = sbData.games.map((g) => `
     <div class="game ${g.state === "in" ? "inprog" : ""}" data-away="${esc(g.away)}" data-home="${esc(g.home)}">
-      <div class="gstatus">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.detail)}</div>
+      <div class="gstatus">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(statusText(g))}</div>
       ${row("away", g)}${row("home", g)}
       ${g.situation && (g.situation.down_distance || g.situation.last_play) ? `
         <div class="sit ${g.situation.red_zone ? "rz" : ""}">
@@ -601,7 +630,7 @@ function sideGames() {
     ${impTag(g, t)}${g.state === "pre" ? "" : `<b>${s}</b>`}</div>`;
   return `<aside class="sidegames">${others.map((g) => `
     <div class="sgame ${g.state === "in" ? "inprog" : ""}" data-away="${esc(g.away)}" data-home="${esc(g.home)}">
-      <div class="sgstatus">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.detail)}</div>
+      <div class="sgstatus" title="${esc(statusText(g))}">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(statusText(g))}</div>
       ${line(g.away, g.away_score, g, g.state === "post" && g.away_score < g.home_score)}
       ${line(g.home, g.home_score, g, g.state === "post" && g.home_score < g.away_score)}
     </div>`).join("")}</aside>`;
@@ -644,7 +673,7 @@ function renderBox() {
     <div class="boxhead">
       <button id="sbBack" class="small">← All games</button>
       <span class="score">${esc(away)} ${g.away_score ?? ""} @ ${esc(home)} ${g.home_score ?? ""}</span>
-      <span class="status muted">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(g.detail || "")} · ${esc(b.scoring_label)} scoring</span>
+      <span class="status muted">${g.state === "in" ? '<span class="gdot in_game"></span>' : ""}${esc(statusText(g))} · ${esc(b.scoring_label)} scoring</span>
     </div>
     ${sit ? `<div class="card" style="margin-bottom:14px"><div class="head">
         <span class="title">${sit.possession ? BALL : ""}${esc(sit.possession || "")} ball</span>

@@ -3,7 +3,7 @@
 Roster: QB, RB, RB, WR, WR, WR, TE, FLEX(RB/WR/TE), DST  |  $50,000 cap.
 All stack / DST / ownership rules are OPT-IN via OptimizerSettings.
 """
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 import numpy as np
@@ -215,23 +215,3 @@ class Optimizer:
         }
 
 
-def lineups_to_upload_rows(lineups):
-    """DK bulk-upload rows (ids, falling back to names)."""
-    header = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"]
-    rows = []
-    for L in lineups:
-        by = {}
-        for p in L["players"]:
-            by.setdefault(p["slot"], []).append(p["id"] or p["name"])
-        rows.append([by["QB"][0], *by["RB"], *by["WR"], by["TE"][0], by["FLEX"][0], by["DST"][0]])
-    return header, rows
-
-
-def settings_from_dict(d):
-    allowed = {f for f in OptimizerSettings.__dataclass_fields__}
-    clean = {k: v for k, v in d.items() if k in allowed and v is not None}
-    return OptimizerSettings(**clean)
-
-
-def settings_to_dict(s):
-    return asdict(s)

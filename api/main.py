@@ -98,11 +98,11 @@ def live(season: str = None, week: str = None, top: int = 50, scoring: str = "dk
 
         hurt = {}          # injuries now come from the browser (see web/espn.js)
 
-        # DK's own export only: ETR projections are paid and live in the separate DFS Tools app.
+        # DK's own salary export only.
         # Salaries are kept per week; season-to-date borrows the current week's.
         st = live_state()
         sal_week = st["week"] if season_mode or not week else int(week)
-        table = (dk_salaries.for_slate(sorted(teams) if teams else None, allow_etr=False,
+        table = (dk_salaries.for_slate(sorted(teams) if teams else None,
                                        season=season or st["season"], week=sal_week,
                                        prefer_showdown=single_game)
                  if scoring == "dk" else None)
@@ -179,7 +179,7 @@ def boxscore(away: str, home: str, season: str = None, week: int = None, scoring
         owners = sleeper_league.ownership(league_id, my_team) if league_id else None
         box = game_detail(season, week, away, home, scoring, owners)
         # DK salaries alongside DraftKings scoring, from DK's own (public) export only
-        table = (dk_salaries.for_slate([away, home], allow_etr=False, season=box["season"],
+        table = (dk_salaries.for_slate([away, home], season=box["season"],
                                        week=box["week"]) if scoring == "dk" else None)
         if table:
             for side in box["teams"]:

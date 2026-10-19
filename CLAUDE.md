@@ -24,7 +24,8 @@ core/      pure logic, no web framework
   salaries.py    picks a salary table for a slate (DK upload only here)
   dksalaries.py  parses DraftKings' own salary export
   optimal.py     hindsight-best lineup from points already scored
-  optimizer.py, showdown.py, loader.py   solvers and name normalization used by optimal.py
+  optimizer.py, showdown.py   classic and captain-mode solvers, used only by optimal.py
+  loader.py      name normalization (`_norm`) and matching
 api/main.py      FastAPI: routing
 web/             index.html, app.js, espn.js, style.css
 ```
@@ -38,8 +39,9 @@ in-game injuries from each visitor's browser. The server handles Sleeper only. T
 server-side ESPN code in `core/scoreboard.py` still works locally, where requests come
 from a residential IP. **Do not move ESPN calls back to the server.**
 
-**Never serve ETR projections here.** They're paid. `for_slate(allow_etr=False)` is
-hard-coded and `data/` is excluded from both `.gitignore` and `.dockerignore`.
+**Never bring ETR projections here.** They're paid and belong to DFS Tools. The ETR file
+readers were removed from this repo on 2026-10-19 so it can be public; salaries come only from
+DK's own export. `data/` is excluded from both `.gitignore` and `.dockerignore`.
 
 **Settings are per-visitor, except salaries.** Leagues, chosen team, scoring system,
 hidden positions and the Optimal toggle live in the visitor's browser and travel with

@@ -4,7 +4,7 @@
 
 Public NFL fantasy scoreboard: a live leaderboard by position, every game's fantasy box score, and
 per-visitor Sleeper league scoring. Runs at **https://fantasyscoreboard.mikemendel.com** (no
-password). The DFS lineup optimizer is a separate private project: `dfs-tools`.
+password).
 
 ```
 core/       Sleeper stats, scoring, ESPN, salaries, hindsight-optimal solver (pure Python, no web)
@@ -59,7 +59,8 @@ Then open http://localhost:8000.
 upcoming next, finals at the bottom. Each team shows its **implied points** (only the decimals needed, e.g. 26.25, 24.5, 22): half the
 over/under plus or minus half the spread (hover for the spread and O/U). Before kickoff they sit where the
 score goes; once the game starts they shrink beside the score. A game with a spread but no total shows the
-spread beside the favorite instead. An upcoming game shows its TV channel after the kickoff time. ESPN drops the line from its scoreboard at kickoff,
+spread beside the favorite instead. The top line of an upcoming game shows its kickoff, TV channel and spread
+(`- ESPN/ABC - SF -7.5`); a final shows how the spread and total came out (`Final · CLE covered +3 · Under 40.5`). ESPN drops the line from its scoreboard at kickoff,
 so a started game's closing line comes from its game summary, fetched once and remembered in the browser. Refresh cadence adapts the same way the Live tab's does. Click any game for a fantasy box
 score: QB/RB/WR/TE, K and DST for both teams, grouped by position and sorted by points.
 
@@ -137,15 +138,14 @@ Per-visitor, stored in that browser only (so two people using the site at once d
 Server-side and shared by everyone:
 
 - **DraftKings salaries** — upload the CSV from a DK contest's player list (*Export to CSV*). This is
-  public DraftKings data, unlike ETR projections, so it works on the public site: it turns on the
+  public DraftKings data, so it's fine on a public site: it turns on the
   salary column and the Optimal lineup. `core/dksalaries.py` parses both classic and showdown exports
   and reads kickoff times out of the `Game Info` column. Each upload is filed under the NFL week its
   games fall in and kept, so past weeks keep their salaries; Settings lists every saved file by week
   with its own **Remove**. Re-uploading the same slate replaces it; a showdown or other slate the same
   week is kept alongside.
 
-ETR projections are never used here — they're paid, and live in the separate DFS Tools app
-(`allow_etr=False`).
+Projections are never used here: salaries come only from DK's own export.
 
 ### Salaries and the optimal lineup
 

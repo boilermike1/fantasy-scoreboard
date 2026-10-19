@@ -3,71 +3,18 @@
 Roster (6): 1 CPT + 5 FLEX, $50,000 cap. CPT scores 1.5x and costs 1.5x.
 Lineup must include at least one player from each team.
 """
-import io
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import List
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import milp, LinearConstraint, Bounds
 
-from .loader import match_names, _clean_money
+from .loader import match_names
 
 SALARY_CAP = 50000
 ROSTER = 6
 FLEX_SLOTS = 5
-
-
-def load_showdown(source):
-    """Load a DK showdown projections CSV.
-
-    Columns out: name, pos, team, sal, proj, cpt_sal, cpt_proj, own, cpt_own, ceil, id
-    """
-    if isinstance(source, (bytes, bytearray)):
-        source = io.BytesIO(source)
-    df = pd.read_csv(source)
-    df.columns = [c.strip() for c in df.columns]
-
-    need = ["Player", "Pos", "Team", "Salary", "Proj"]
-    missing = [c for c in need if c not in df.columns]
-    if missing:
-        raise ValueError(f"CSV missing expected columns: {missing}")
-    if "Site" in df.columns:
-        df = df[df["Site"].astype(str).str.strip().str.upper() == "DK"]
-
-    num = lambda c, d=0.0: pd.to_numeric(df[c], errors="coerce").fillna(d) if c in df else d
-    out = pd.DataFrame({
-        "name": df["Player"].astype(str).str.strip(),
-        "pos": df["Pos"].astype(str).str.strip().str.upper(),
-        "team": df["Team"].astype(str).str.strip().str.upper(),
-        "sal": _clean_money(df["Salary"]).fillna(0).astype(int),
-        "proj": num("Proj"),
-        "ceil": num("Ceiling"),
-        "own": num("Total Own") if "Total Own" not in df else pd.to_numeric(
-            df["Total Own"].astype(str).str.rstrip("%"), errors="coerce").fillna(0.0),
-        "cpt_own": pd.to_numeric(df["CPT Own"].astype(str).str.rstrip("%"), errors="coerce").fillna(0.0)
-            if "CPT Own" in df else 0.0,
-        "id": df["id"].astype(str).str.strip() if "id" in df.columns else "",
-    })
-    # CPT salary/proj are 1.5x unless the file says otherwise
-    out["cpt_sal"] = (_clean_money(df["CPT Salary"]).fillna(0).astype(int) if "CPT Salary" in df
-                      else (out.sal * 1.5).round().astype(int))
-    out["cpt_proj"] = (pd.to_numeric(df["CPT Proj"], errors="coerce").fillna(0.0) if "CPT Proj" in df
-                       else out.proj * 1.5)
-
-    total = len(out)
-    out = out[(out.proj > 0) & (out.sal > 0)].reset_index(drop=True)
-    skipped = total - len(out)
-    if len(out) < ROSTER:
-        raise ValueError(
-            f"Only {len(out)} of {total} players have a projection above 0, but a showdown lineup "
-            f"needs {ROSTER}. The file's Proj column is mostly zeros — re-export it once "
-            f"projections are published.")
-    out.attrs["skipped_no_proj"] = skipped
-    teams = sorted(out.team.unique())
-    if len(teams) != 2:
-        raise ValueError(f"Showdown slate needs exactly 2 teams; found {len(teams)}: {', '.join(teams) or 'none'}")
-    return out
 
 
 @dataclass
@@ -197,11 +144,3 @@ class ShowdownOptimizer:
         }
 
 
-def showdown_upload_rows(lineups):
-    header = ["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"]
-    return header, [[p["id"] or p["name"] for p in L["players"]] for L in lineups]
-
-
-def showdown_settings_from_dict(d):
-    allowed = set(ShowdownSettings.__dataclass_fields__)
-    return ShowdownSettings(**{k: v for k, v in d.items() if k in allowed and v is not None})

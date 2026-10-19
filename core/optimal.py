@@ -1,7 +1,7 @@
 """The best lineup that could have been built, from points already scored.
 
 Not a projection — this is the hindsight-optimal lineup given live scoring and DK
-salaries, the way DKLive shows it. Reuses the same solvers as the optimizer tabs.
+salaries, the way DKLive shows it.
 """
 import pandas as pd
 
@@ -36,8 +36,8 @@ def optimal_lineup(rows, table, showdown=False, cap=50000):
     """Best possible lineup from what has actually been scored. None if not solvable."""
     if not table:
         return {"available": False,
-                "reason": "No DraftKings salaries for this slate — upload its projections "
-                          "on the Main Slate or Showdown tab."}
+                "reason": "No DraftKings salaries for this slate — upload DK's salary file "
+                          "on the Settings tab."}
 
     df = _frame(rows, table, showdown)
     needed = 6 if showdown else 9
