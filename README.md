@@ -56,7 +56,9 @@ Then open http://localhost:8000.
 ## Tabs
 
 **Scoreboard** — every NFL game for the week. In-progress games (green pulsing dot) sort to the top,
-upcoming next, finals at the bottom. Refresh cadence adapts the same way the Live tab's does. Click any game for a fantasy box
+upcoming next, finals at the bottom. The favorite shows its point spread (e.g. `-3.5`) and an
+upcoming game shows its TV channel after the kickoff time. ESPN drops the line from its scoreboard at kickoff,
+so a started game's closing line comes from its game summary, fetched once and remembered in the browser. Refresh cadence adapts the same way the Live tab's does. Click any game for a fantasy box
 score: QB/RB/WR/TE, K and DST for both teams, grouped by position and sorted by points.
 
 While a game is in progress its card also shows possession (a small football beside the team with the

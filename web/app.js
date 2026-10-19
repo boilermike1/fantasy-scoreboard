@@ -34,6 +34,44 @@ const BALL = `<svg class="poss" viewBox="0 0 24 14" aria-hidden="true"><title>Ha
 </svg>`;
 const hasBall = (g, team) => !!(g.situation && g.situation.possession === team);
 
+// point spread beside the favored team
+const spreadTag = (g, team) => g.spread && g.spread.team === team
+  ? `<span class="spread" title="Point spread">${esc(g.spread.line)}</span>` : "";
+
+// ESPN only lists the line before kickoff. Lines seen then are remembered in this browser,
+// and a started game's closing line is fetched from its summary once and kept.
+const SPREADS = "scoreboard.spreads";     // game id -> {team, line, closed}
+const spreadTried = new Set();
+function applySpreads(games) {
+  const all = prefGet(SPREADS, {}) || {};
+  let changed = false;
+  games.forEach((g) => {
+    if (!g.id) return;
+    if (g.spread && g.state === "pre") {
+      if (JSON.stringify(all[g.id]) !== JSON.stringify(g.spread)) { all[g.id] = g.spread; changed = true; }
+    } else if (!g.spread && all[g.id]) {
+      g.spread = { team: all[g.id].team, line: all[g.id].line };
+    }
+  });
+  if (changed) prefSet(SPREADS, all);
+}
+async function fetchClosingSpreads(games) {
+  const all = prefGet(SPREADS, {}) || {};
+  const todo = games.filter((g) => g.id && g.state !== "pre" && !(all[g.id] && all[g.id].closed)
+                                   && !spreadTried.has(g.id));
+  if (!todo.length) return false;
+  todo.forEach((g) => spreadTried.add(g.id));
+  const got = await Promise.all(todo.map((g) => espnSpread(g.id, g.home).catch(() => null)));
+  let changed = false;
+  todo.forEach((g, i) => {
+    if (!got[i]) return;
+    all[g.id] = { ...got[i], closed: true };
+    g.spread = got[i]; changed = true;
+  });
+  if (changed) prefSet(SPREADS, all);
+  return changed;
+}
+
 // in-game injury designation
 const INJ_SHORT = { out: "OUT", doubtful: "D", questionable: "Q", probable: "P" };
 function injTag(p) {
@@ -429,7 +467,13 @@ async function loadScoreboard(keepDetail = true) {
       `${r.season} Week ${r.week} · ${r.games.length} games${games} · updated ${esc(r.updated_at)}`;
 
     await syncTeamPickers(currentScoring());
+    applySpreads(r.games);
     renderGames();
+    fetchClosingSpreads(r.games).then((changed) => {
+      if (!changed || sbData !== r) return;
+      renderGames();
+      if (sbOpen) renderBox();
+    });
     if (sbOpen && keepDetail) await openBox(sbOpen.away, sbOpen.home);
   } catch (err) {
     $("sbError").innerHTML = `<div class="warn err">${esc(err.message)}</div>`;
@@ -447,7 +491,7 @@ function renderGames() {
     return `<div class="grow ${lost ? "lost" : ""}">
       <img src="${esc(side === "away" ? g.away_logo : g.home_logo)}" alt="" loading="lazy">
       <span class="tm">${esc(side === "away" ? g.away : g.home)}${
-        hasBall(g, side === "away" ? g.away : g.home) ? BALL : ""}</span>
+        hasBall(g, side === "away" ? g.away : g.home) ? BALL : ""}${spreadTag(g, side === "away" ? g.away : g.home)}</span>
       <span class="sc">${g.state === "pre" ? "" : them}</span>
     </div>`;
   };
@@ -537,7 +581,7 @@ function sideGames() {
   const others = (sbData?.games || []).filter((x) => !(sbOpen && x.away === sbOpen.away && x.home === sbOpen.home));
   if (!others.length) return "";
   const line = (t, s, g, lost) => `<div class="sgrow ${lost ? "lost" : ""}">
-    <img src="${esc(LOGO(t))}" alt="" loading="lazy"><span>${esc(t)}${hasBall(g, t) ? BALL : ""}</span>
+    <img src="${esc(LOGO(t))}" alt="" loading="lazy"><span>${esc(t)}${hasBall(g, t) ? BALL : ""}${spreadTag(g, t)}</span>
     <b>${g.state === "pre" ? "" : s}</b></div>`;
   return `<aside class="sidegames">${others.map((g) => `
     <div class="sgame ${g.state === "in" ? "inprog" : ""}" data-away="${esc(g.away)}" data-home="${esc(g.home)}">

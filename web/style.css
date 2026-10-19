@@ -243,3 +243,7 @@ font-size:11px;color:var(--muted)}
 /* footer */
 .sitefoot{display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 20px 36px;margin-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 .sitefoot img{display:block;width:56px;height:56px}
+
+/* point spread beside the favorite */
+.spread{margin-left:6px;font-size:11px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.sgrow .spread{margin-left:4px;font-size:10px}

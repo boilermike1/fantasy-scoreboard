@@ -9,6 +9,22 @@ const LOGO = (t) => `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCas
 
 const fixTeam = (t) => { const a = String(t || "").toUpperCase(); return TEAM_FIX[a] || a; };
 
+// mirrors core/scoreboard.py: CHANNEL_FIX, _channel, parse_spread
+const CHANNEL_FIX = { "Fox": "FOX", "NFL Net": "NFL Network" };
+function channelOf(comp) {
+  const names = [...new Set((comp.broadcasts || []).flatMap((b) => b.names || []))];
+  return names.map((n) => CHANNEL_FIX[n] || n).join("/");
+}
+function parseSpread(details, home) {
+  const d = String(details || "").trim();
+  if (!d) return null;
+  if (["EVEN", "PK", "PICK"].includes(d.toUpperCase())) return { team: home, line: "PK" };
+  const cut = d.lastIndexOf(" ");
+  const team = d.slice(0, cut), line = d.slice(cut + 1);
+  if (cut < 1 || !line.startsWith("-")) return null;
+  return { team: fixTeam(team), line };
+}
+
 const CENTRAL = { timeZone: "America/Chicago" };
 function centralTime(iso) {
   try {
@@ -53,7 +69,10 @@ async function espnScoreboard(season, week) {
       home_logo: LOGO(h), away_logo: LOGO(a),
       home_score: Number(home.score || 0), away_score: Number(away.score || 0),
       state: st.state || "pre",
-      detail: st.state === "pre" && comp.date ? centralTime(comp.date) : (st.shortDetail || ""),
+      detail: st.state === "pre" && comp.date
+        ? centralTime(comp.date) + (channelOf(comp) ? ` - ${channelOf(comp)}` : "")
+        : (st.shortDetail || ""),
+      spread: parseSpread(((comp.odds || [{}])[0] || {}).details, h),
       start: comp.date || "",
       situation,
     };
@@ -186,6 +205,12 @@ async function espnGameDetail(gameId, startIso) {
     if (name) injuries[normName(name)] = { status: item.status, detail: (item.details?.type || "").trim() };
   }));
   return { plays: log, injuries };
+}
+
+// ESPN drops the line from the scoreboard at kickoff; the game summary keeps the closing one
+async function espnSpread(gameId, home) {
+  const data = await espnJson(`${ESPN_SUM}?event=${gameId}`);
+  return parseSpread(((data.pickcenter || [])[0] || {}).details, home);
 }
 
 // must match core/loader.py _norm so names line up with the server's rows

@@ -38,6 +38,28 @@ def _team(abbr):
     return TEAM_FIX.get(a, a)
 
 
+# ESPN's network names, tidied for display
+CHANNEL_FIX = {"Fox": "FOX", "NFL Net": "NFL Network"}
+
+
+def _channel(comp):
+    names = [n for b in comp.get("broadcasts", []) for n in (b.get("names") or [])]
+    return "/".join(CHANNEL_FIX.get(n, n) for n in dict.fromkeys(names))
+
+
+def parse_spread(details, home):
+    """'KC -7.5' -> {"team": "KC", "line": "-7.5"}; a pick'em sits beside the home team."""
+    details = str(details or "").strip()
+    if not details:
+        return None
+    if details.upper() in ("EVEN", "PK", "PICK"):
+        return {"team": home, "line": "PK"}
+    team, _, line = details.rpartition(" ")
+    if not team or not line.startswith("-"):
+        return None
+    return {"team": _team(team), "line": line}
+
+
 def get_scoreboard(season=None, week=None):
     """All games for one week: score, state, clock. In-progress games sort first."""
     state = get_state()
@@ -75,6 +97,8 @@ def get_scoreboard(season=None, week=None):
                     detail = kick.strftime("%-m/%-d - %-I:%M %p %Z")
                 except Exception:
                     pass
+                if _channel(comp):
+                    detail += f" - {_channel(comp)}"
 
             situation = None
             sit = comp.get("situation") or {}
@@ -102,6 +126,7 @@ def get_scoreboard(season=None, week=None):
                 "away_score": int(away.get("score") or 0),
                 "state": st.get("state", "pre"),          # pre | in | post
                 "detail": detail,
+                "spread": parse_spread(((comp.get("odds") or [{}])[0]).get("details"), h),
                 "start": comp.get("date", ""),
             })
         _sb_cache[key] = (time.time(), games)
