@@ -74,7 +74,7 @@ cost defenses their +10. `normalize_dst()` handles it; don't "simplify" it away.
 - Domain: `fantasyscoreboard.mikemendel.com`, DNS at Cloudflare — A to `66.241.124.182`,
   AAAA to `2a09:8280:1::1ac:89bb:0`, both **DNS only / grey cloud**. The orange proxy
   breaks certificate issuance and renewal.
-- Repo: https://github.com/boilermike1/fantasy-scoreboard (private). Push to `main`
+- Repo: https://github.com/boilermike1/fantasy-scoreboard (public since 2026-10-19; never commit data/ or secrets). Push to `main`
   deploys via GitHub Actions using repo secret `FLY_API_TOKEN`.
 - League defaults: Fly secrets `SLEEPER_LEAGUE_ID` / `SLEEPER_USER_ID`.
 - Cloudflare Web Analytics beacon is injected into the page by `index()`.
