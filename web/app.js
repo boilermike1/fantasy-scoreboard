@@ -726,11 +726,13 @@ function renderBox() {
 // player panel (season by week, lines against results).
 let boxRows = [];
 const PROP_CORE = {
-  QB: ["pass_yd", "pass_td", "pass_int", "rush_yd"], RB: ["rush_yd", "rush_att", "rec", "rec_yd"],
+  QB: ["pass_yd", "pass_td", "pass_int", "rush_yd"], RB: ["rush_att", "rush_yd", "rec", "rec_yd"],
   WR: ["rec", "rec_yd", "rec_lng"], TE: ["rec", "rec_yd", "rec_lng"], K: ["kick_pts", "fgm", "xpm"],
 };
-const PROP_HEAD = { QB: ["pass_yd", "pass_td", "rush_yd"], RB: ["rush_yd", "rec"], WR: ["rec", "rec_yd"],
-                    TE: ["rec", "rec_yd"], K: ["kick_pts"] };
+const PROP_HEAD = { QB: ["pass_yd", "pass_td", "rush_yd"], RB: ["rush_att", "rush_yd", "rec", "rec_yd"],
+                    WR: ["rec", "rec_yd"], TE: ["rec", "rec_yd"], K: ["kick_pts"] };
+// pre-game rosters rank each position by its main yardage line
+const PROP_SORT = { QB: "pass_yd", RB: "rush_yd", WR: "rec_yd", TE: "rec_yd", K: "kick_pts" };
 const PROP_LABEL = {
   pass_yd: "pass yds", pass_cmp: "comp", pass_att: "att", pass_td: "pass TD", pass_int: "INT",
   pass_lng: "long comp", pass_rush_yd: "pass+rush yds", rush_yd: "rush yds", rush_att: "carries",
@@ -753,7 +755,7 @@ function attachProps(b, g, data) {
   // before kickoff the box score has no stats: list the players with lines instead
   if (g.state === "pre" && data.players.length) {
     const rank = { QB: 0, RB: 1, WR: 2, TE: 3, K: 4 };
-    const lead = (p) => { const k = (PROP_HEAD[p.pos] || [])[0]; return k && p.lines[k] ? p.lines[k].now : 0; };
+    const lead = (p) => { const k = PROP_SORT[p.pos]; return k && p.lines[k] ? p.lines[k].now : 0; };
     b.teams = [g.away, g.home].map((team) => ({
       team,
       players: data.players.filter((p) => p.team === team)
@@ -834,14 +836,15 @@ function playerPanelHtml(h, row, scoring) {
   let html = "";
   // this game's full set of lines
   if (betting && row.prop) {
-    const keys = PROP_ORDER.filter((k) => row.prop.lines[k]);
+    const first = PROP_CORE[h.pos] || [];
+    const keys = [...first, ...PROP_ORDER.filter((k) => !first.includes(k))].filter((k) => row.prop.lines[k]);
     html += `<h3>This game's lines</h3><table class="pp-t"><thead><tr><th></th><th class="num">Open</th><th class="num">Now</th></tr></thead><tbody>${
       keys.map((k) => { const l = row.prop.lines[k];
         return `<tr><td>${PROP_LABEL[k]}</td><td class="num muted">${l.open ?? ""}</td><td class="num"><b>${l.now}</b></td></tr>`; }).join("")
     }</tbody></table>`;
   }
   // season by week
-  const core = (PROP_CORE[h.pos] || []).slice(0, 3);
+  const core = PROP_CORE[h.pos] || [];
   const played = h.weeks.filter((w) => w.played);
   const total = played.reduce((s, w) => s + (w.pts || 0), 0);
   html += `<h3>Season · ${esc(label)} <span class="muted">${played.length} games · ${played.length ? (total / played.length).toFixed(2) : "0"} avg</span></h3>
