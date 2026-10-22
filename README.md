@@ -134,6 +134,12 @@ fetched in parallel and cached 2 minutes.
 once the game is under way. Scoreless defenses also stay on the board while their game is live, since
 0 points for a defense on the field is real information.
 
+### Where you are
+
+The page address keeps the tab, week, Live slate and any open box score (e.g.
+`#scoreboard?week=6&game=LAC@KC`), so a refresh, bookmark or shared link opens the same view. The current
+week is left out of the address so a saved link rolls over to the new week on its own.
+
 ### Settings tab
 
 Per-visitor, stored in that browser only (so two people using the site at once don't affect each other):

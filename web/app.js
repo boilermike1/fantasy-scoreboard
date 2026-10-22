@@ -1,5 +1,32 @@
 const $ = (id) => document.getElementById(id);
 
+// ---- where you are ----
+// Kept in the address (#scoreboard?week=7&game=NE@CHI) so a refresh, a bookmark or a shared
+// link lands in the same place. The current week is left out so it rolls over on its own.
+const TABS = ["live", "scoreboard", "settings"];
+const restore = (() => {
+  const [tab, query] = location.hash.slice(1).split("?");
+  const q = new URLSearchParams(query || "");
+  return { tab: TABS.includes(tab) ? tab : null, week: q.get("week"), slate: q.get("slate"), game: q.get("game") };
+})();
+function saveView() {
+  const tab = document.querySelector(".tab.active")?.dataset.tab || "live";
+  const q = new URLSearchParams();
+  if (tab === "live") {
+    const wk = $("liveWeek").value;
+    if (wk && wk !== String(liveWeekNow)) q.set("week", wk);
+    const slate = $("liveSlate").value;
+    if (slate && slate !== "all" && !$("liveSlateWrap").classList.contains("hidden")) q.set("slate", slate);
+  } else if (tab === "scoreboard") {
+    const wk = $("sbWeek").value;
+    if (wk && sbData && wk !== String(sbData.current_week)) q.set("week", wk);
+    if (sbOpen) q.set("game", `${sbOpen.away}@${sbOpen.home}`);
+  }
+  const query = q.toString().replace(/%40/g, "@");      // keep "NE@CHI" readable
+  const hash = `#${tab}${query ? `?${query}` : ""}`;
+  if (location.hash !== hash) history.replaceState(null, "", hash);
+}
+
 // ---- tabs ----
 document.querySelector("nav").addEventListener("click", (e) => {
   const b = e.target.closest(".tab"); if (!b) return;
@@ -7,6 +34,7 @@ document.querySelector("nav").addEventListener("click", (e) => {
   document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
   b.classList.add("active");
   $(b.dataset.tab).classList.add("active");
+  saveView();
 });
 
 // ---- helpers ----
@@ -317,7 +345,7 @@ async function loadLive() {
   if (liveLoading) { livePending = true; return; }
   liveLoading = true;
   try {
-    const wk = $("liveWeek").value;
+    const wk = $("liveWeek").value || (restore.tab === "live" && restore.week) || "";
     const scoring = $("liveScoring").value || currentScoring();
     await syncTeamPickers(scoring);
 
@@ -346,7 +374,7 @@ async function loadLive() {
     const lid = scoring.startsWith("league:") ? scoring.slice(7) : "";
     if (lid && myTeamFor(lid)) qs.set("my_team", myTeamFor(lid));
     if (wk) qs.set("week", wk);
-    const slateKey = scoring === "dk" ? ($("liveSlate").value || "all") : "all";
+    const slateKey = scoring === "dk" ? ($("liveSlate").value || (restore.tab === "live" && restore.slate) || "all") : "all";
     const chosenSlate = slates.find((x) => x.key === slateKey);
     if (chosenSlate && chosenSlate.teams) {
       qs.set("slate", slateKey);
@@ -392,7 +420,7 @@ async function loadLive() {
 
     const slateOpts = r.slates || [];
     $("liveSlateWrap").classList.toggle("hidden", !slateOpts.length || r.scoring !== "dk");
-    const wantSlate = $("liveSlate").value || "all";
+    const wantSlate = $("liveSlate").value || (restore.tab === "live" && restore.slate) || "all";
     const signature = slateOpts.map((x) => x.key).join("|");
     if ($("liveSlate").dataset.sig !== signature) {
       $("liveSlate").dataset.sig = signature;
@@ -409,6 +437,8 @@ async function loadLive() {
     $("liveMeta").innerHTML = `<span class="live-dot ${isCurrent ? "" : "stale"}"></span>` +
       `${when}${slateTxt} · ${esc(r.scoring_label)}${games} · updated ${esc(r.updated_at)}`;
     renderBoard();
+    if (restore.tab === "live") { restore.week = restore.slate = null; }
+    if ($("live").classList.contains("active")) saveView();
   } catch (err) {
     $("liveError").innerHTML = `<div class="warn err">${esc(err.message)}</div>`;
   }
@@ -478,15 +508,15 @@ $("liveScoring").addEventListener("change", () => {
   if ($("liveScoring").value !== "dk") $("liveSlate").value = "all";
   setScoringEverywhere($("liveScoring").value);
 });
-$("liveWeek").addEventListener("change", () => { $("liveSlate").value = "all"; loadLive(); });
-$("liveSlate").addEventListener("change", loadLive);
+$("liveWeek").addEventListener("change", () => { $("liveSlate").value = "all"; saveView(); loadLive(); });
+$("liveSlate").addEventListener("change", () => { saveView(); loadLive(); });
 $("liveRefresh").addEventListener("click", loadLive);
 $("liveAuto").addEventListener("change", setLiveTimer);
 document.querySelector('.tab[data-tab="live"]').addEventListener("click", () => {
   loadLive(); setLiveTimer();
 });
 
-// Live is the landing tab
+// Live is the landing tab, unless the address names another (see the end of this file)
 loadLive();
 setLiveTimer();
 
@@ -500,7 +530,7 @@ async function loadScoreboard(keepDetail = true) {
   if (sbLoading) { sbPending = true; return; }
   sbLoading = true;
   try {
-    const wk = $("sbWeek").value;
+    const wk = $("sbWeek").value || (restore.tab === "scoreboard" && restore.week) || "";
     let r = await api(`/api/scoreboard${wk ? `?week=${wk}` : ""}`);
     if (r.unavailable || !r.games.length) {
       // ESPN blocks the server's IP; fetch it here instead
@@ -534,7 +564,13 @@ async function loadScoreboard(keepDetail = true) {
       renderGames();
       if (sbOpen) renderBox();
     });
-    if (sbOpen && keepDetail) await openBox(sbOpen.away, sbOpen.home);
+    if (restore.tab === "scoreboard" && restore.game) {
+      const [ga, gh] = restore.game.toUpperCase().split("@");
+      restore.game = null;
+      if (r.games.some((x) => x.away === ga && x.home === gh)) await openBox(ga, gh);
+    } else if (sbOpen && keepDetail) await openBox(sbOpen.away, sbOpen.home);
+    if (restore.tab === "scoreboard") restore.week = null;
+    if ($("scoreboard").classList.contains("active")) saveView();
   } catch (err) {
     $("sbError").innerHTML = `<div class="warn err">${esc(err.message)}</div>`;
   }
@@ -574,6 +610,7 @@ function renderGames() {
 async function openBox(away, home) {
   if (!sbOpen || sbOpen.away !== away || sbOpen.home !== home) sbPlaysAll = false;
   sbOpen = { away, home };
+  saveView();
   const ticket = ++sbTicket;   // a slower, older request must not overwrite this one
   const scoring = currentScoring();
   const wk = $("sbWeek").value;
@@ -860,6 +897,7 @@ function playerPanelHtml(h, row, scoring) {
 
 function closeBox() {
   sbOpen = null; sbBox = null; sbTicket++; hidePropTip();
+  saveView();
   $("sbDetail").classList.add("hidden");
   $("sbDetail").innerHTML = "";
   $("sbGames").classList.remove("hidden");
@@ -1061,3 +1099,6 @@ $("setSalFile").addEventListener("change", async (e) => {
 });
 
 document.querySelector('.tab[data-tab="settings"]')?.addEventListener("click", loadSettings);
+
+// open the tab the address names, now that every handler is wired
+if (restore.tab && restore.tab !== "live") document.querySelector(`.tab[data-tab="${restore.tab}"]`)?.click();
