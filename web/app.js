@@ -61,6 +61,7 @@ const BALL = `<svg class="poss" viewBox="0 0 24 14" aria-hidden="true"><title>Ha
   <path d="M9 5.2v3.6M11 5v4M13 5v4M15 5.2v3.6" stroke="#fff" stroke-width="1" stroke-linecap="round"/>
 </svg>`;
 const hasBall = (g, team) => !!(g.situation && g.situation.possession === team);
+const recTag = (rec) => rec ? `<span class="rec">${esc(rec)}</span>` : "";
 
 // Betting lines (spreads, totals, results) can be hidden on the Scoreboard; shown by default.
 const showBetting = () => prefGet("sb.betting", true) !== false;
@@ -586,7 +587,7 @@ function renderGames() {
     const lost = g.state === "post" && them < other;
     return `<div class="grow ${lost ? "lost" : ""}">
       <img src="${esc(side === "away" ? g.away_logo : g.home_logo)}" alt="" loading="lazy">
-      <span class="tm">${esc(side === "away" ? g.away : g.home)}${
+      <span class="tm">${esc(side === "away" ? g.away : g.home)}${recTag(side === "away" ? g.away_record : g.home_record)}${
         hasBall(g, side === "away" ? g.away : g.home) ? BALL : ""}${spreadTag(g, side === "away" ? g.away : g.home)}</span>
       ${impTag(g, side === "away" ? g.away : g.home)}
       ${g.state === "pre" ? "" : `<span class="sc">${them}</span>`}
@@ -718,7 +719,7 @@ function renderBox() {
     const score = side.team === g.away ? g.away_score : g.home_score;
     return `<div class="card">
       <div class="head"><span class="boxtitle"><img src="${esc(logo || "")}" alt="">
-        <span class="title" style="font-size:14px">${esc(side.team)}</span></span>
+        <span class="title" style="font-size:14px">${esc(side.team)}</span>${recTag(side.team === g.away ? g.away_record : g.home_record)}</span>
         ${g.state && g.state !== "pre" ? `<span class="stat pts"><b>${score}</b></span>` : ""}</div>
       ${side.players.length ? `<div class="cardbody"><table><tbody>${rows}</tbody></table></div>`
         : `<div class="empty" style="padding:20px">${g.state === "pre"
@@ -925,8 +926,9 @@ $("sbBetting").addEventListener("change", () => {
   renderGames();          // the Scoreboard tab may be hidden; it's ready when the user returns
   if (sbOpen) renderBox();
 });
+// the Scoreboard tab always opens on the all-games view
 document.querySelector('.tab[data-tab="scoreboard"]').addEventListener("click", () => {
-  loadScoreboard(); setSbTimer();
+  closeBox(); loadScoreboard(false); setSbTimer();
 });
 
 // ================================================================ settings ====

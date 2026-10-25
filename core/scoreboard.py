@@ -48,6 +48,11 @@ def _channel(comp):
     return CHANNEL_FIX.get(names[0], names[0]) if names else ""
 
 
+def _record(side):
+    """Overall W-L(-T) record, e.g. "4-2"."""
+    return next((r.get("summary", "") for r in side.get("records") or [] if r.get("type") == "total"), "")
+
+
 def parse_spread(details, home, total=None):
     """'KC -7.5' -> {"team": "KC", "line": "-7.5", "total": 44.5}; a pick'em sits beside the
     home team. total is the game over/under, from which each side's implied points follow."""
@@ -130,6 +135,7 @@ def get_scoreboard(season=None, week=None):
                 "away_name": away["team"].get("shortDisplayName", a),
                 "home_logo": CDN_TEAM.format(team=h.lower()),
                 "away_logo": CDN_TEAM.format(team=a.lower()),
+                "home_record": _record(home), "away_record": _record(away),
                 "home_score": int(home.get("score") or 0),
                 "away_score": int(away.get("score") or 0),
                 "state": st.get("state", "pre"),          # pre | in | post

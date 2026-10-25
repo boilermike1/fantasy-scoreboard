@@ -16,6 +16,9 @@ function channelOf(comp) {
   const first = (comp.broadcasts || []).flatMap((b) => b.names || [])[0];
   return first ? (CHANNEL_FIX[first] || first) : "";
 }
+// overall W-L(-T) record, e.g. "4-2"; mirrors core/scoreboard.py _record
+const recordOf = (side) => ((side.records || []).find((r) => r.type === "total") || {}).summary || "";
+
 function parseSpread(details, home, overUnder) {
   const d = String(details || "").trim();
   if (!d) return null;
@@ -71,6 +74,7 @@ async function espnScoreboard(season, week) {
       id: e.id, home: h, away: a,
       home_logo: LOGO(h), away_logo: LOGO(a),
       home_score: Number(home.score || 0), away_score: Number(away.score || 0),
+      home_record: recordOf(home), away_record: recordOf(away),
       state: st.state || "pre",
       detail: st.state === "pre" ? "" : (st.shortDetail || ""),   // pre-game line is built in app.js
       channel: channelOf(comp),
