@@ -9,6 +9,23 @@ const LOGO = (t) => `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCas
 
 const fixTeam = (t) => { const a = String(t || "").toUpperCase(); return TEAM_FIX[a] || a; };
 
+// every team, in the scoreboard's abbreviations (after TEAM_FIX); mirrors core/scoreboard.py NFL_TEAMS
+const NFL_TEAMS = ["ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB",
+  "HOU", "IND", "JAX", "KC", "LAC", "LAR", "LV", "MIA", "MIN", "NE", "NO", "NYG", "NYJ", "PHI", "PIT",
+  "SEA", "SF", "TB", "TEN", "WAS"];
+
+// Teams on bye: ESPN lists them under week.teamsOnBye. If that's missing, they're the teams
+// without a game — but only when every abbreviation in the games is a known one, so a renamed
+// abbreviation can't put a playing team on bye. Mirrors core/scoreboard.py _byes.
+function byesOf(raw, games) {
+  let teams = ((raw.week || {}).teamsOnBye || []).map((t) => fixTeam(t.abbreviation)).filter(Boolean);
+  if (!teams.length && games.length) {
+    const playing = new Set(games.flatMap((g) => [g.away, g.home]));
+    if ([...playing].every((t) => NFL_TEAMS.includes(t))) teams = NFL_TEAMS.filter((t) => !playing.has(t));
+  }
+  return [...new Set(teams)].sort().map((t) => ({ team: t, logo: LOGO(t) }));
+}
+
 // mirrors core/scoreboard.py: CHANNEL_FIX, _channel, parse_spread
 const CHANNEL_FIX = { "Fox": "FOX", "NFL Net": "NFLN", "Prime Video": "Prime" };
 function channelOf(comp) {
@@ -87,7 +104,7 @@ async function espnScoreboard(season, week) {
 
   games.sort((x, y) => (STATE_ORDER[x.state] ?? 3) - (STATE_ORDER[y.state] ?? 3) || x.start.localeCompare(y.start));
   return {
-    season: String(season), week: Number(week), games,
+    season: String(season), week: Number(week), games, byes: byesOf(raw, games),
     live_games: games.filter((g) => g.state === "in").length,
     upcoming_games: games.filter((g) => g.state === "pre").length,
   };

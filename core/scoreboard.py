@@ -21,6 +21,10 @@ ESPN_SUMMARY = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summa
 
 # ESPN agrees with Sleeper on all 32 abbreviations except Washington.
 TEAM_FIX = {"WSH": "WAS"}
+# every team, in the scoreboard's abbreviations (after TEAM_FIX); mirrors web/espn.js NFL_TEAMS
+NFL_TEAMS = ["ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB",
+             "HOU", "IND", "JAX", "KC", "LAC", "LAR", "LV", "MIA", "MIN", "NE", "NO", "NYG", "NYJ",
+             "PHI", "PIT", "SEA", "SF", "TB", "TEN", "WAS"]
 
 BOX_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"]
 STATE_ORDER = {"in": 0, "pre": 1, "post": 2}   # in progress first, finals last
@@ -71,6 +75,18 @@ def parse_spread(details, home, total=None):
     return {"team": _team(team), "line": line, "total": total}
 
 
+def _byes(raw, games):
+    """Teams on bye: ESPN's week.teamsOnBye, or failing that the teams without a game — but
+    only when every abbreviation in the games is a known one. Mirrors web/espn.js byesOf."""
+    teams = [_team(t.get("abbreviation")) for t in (raw.get("week") or {}).get("teamsOnBye") or []]
+    teams = [t for t in teams if t]
+    if not teams and games:
+        playing = {g[s] for g in games for s in ("away", "home")}
+        if playing <= set(NFL_TEAMS):
+            teams = [t for t in NFL_TEAMS if t not in playing]
+    return [{"team": t, "logo": CDN_TEAM.format(team=t.lower())} for t in sorted(set(teams))]
+
+
 def get_scoreboard(season=None, week=None):
     """All games for one week: score, state, clock. In-progress games sort first."""
     state = get_state()
@@ -80,7 +96,7 @@ def get_scoreboard(season=None, week=None):
     key = (season, week)
     hit = _sb_cache.get(key)
     if hit and time.time() - hit[0] < SB_TTL:
-        games = hit[1]
+        games, byes = hit[1], hit[2]
     else:
         try:
             raw = _get(ESPN.format(season=season, week=week), timeout=25)
@@ -146,7 +162,8 @@ def get_scoreboard(season=None, week=None):
                                        ((comp.get("odds") or [{}])[0]).get("overUnder")),
                 "start": comp.get("date", ""),
             })
-        _sb_cache[key] = (time.time(), games)
+        byes = _byes(raw, games)
+        _sb_cache[key] = (time.time(), games, byes)
 
     games = sorted(games, key=lambda g: (STATE_ORDER.get(g["state"], 3), g["start"]))
     return {
@@ -154,6 +171,7 @@ def get_scoreboard(season=None, week=None):
         "scoring_options": [{"key": k, "label": SCORING[k]["label"]}
                             for k in SCORING if not k.startswith("league:")],
         "games": games,
+        "byes": byes,
         "live_games": sum(1 for g in games if g["state"] == "in"),
         "upcoming_games": sum(1 for g in games if g["state"] == "pre"),
         "updated_at": now_str(),

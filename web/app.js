@@ -603,9 +603,16 @@ function renderGames() {
           ${g.situation.possession ? ` · ${esc(g.situation.possession)} ball` : ""}
           ${g.situation.last_play ? `<div>${esc(g.situation.last_play)}</div>` : ""}
         </div>` : ""}
-    </div>`).join("");
+    </div>`).join("") + byesRow(sbData.byes);
   $("sbGames").querySelectorAll(".game").forEach((el) =>
     el.addEventListener("click", () => openBox(el.dataset.away, el.dataset.home)));
+}
+
+// teams with no game this week, as one full-width row under the games
+function byesRow(byes) {
+  if (!byes || !byes.length) return "";
+  return `<div class="byes"><span class="byelabel">Bye</span>${byes.map((b) => `
+    <span class="byeteam"><img src="${esc(b.logo)}" alt="" loading="lazy">${esc(b.team)}</span>`).join("")}</div>`;
 }
 
 async function openBox(away, home) {
