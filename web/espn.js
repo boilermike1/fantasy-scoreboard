@@ -213,6 +213,8 @@ async function espnGameDetail(gameId, startIso) {
       text: p.text || "", team: byId[offense] || "",
       down: p.start?.shortDownDistanceText || "", spot: p.start?.possessionText || "",
       scoring: !!p.scoringPlay, turnover, big,
+      td: !!p.scoringPlay && /touchdown/i.test(String(p.text || "").split("REVERSED.").pop()),
+      wall: p.wallclock || "",
       color: colors[colorOf] || colors[offense] || "",
     };
   }).reverse();

@@ -240,7 +240,7 @@ function visiblePositions(all) {
   return all.filter((p) => !off.includes(p));
 }
 
-function renderPosBar(all, showOptimal) {
+function renderPosBar(all, showOptimal, showBig) {
   const on = visiblePositions(all);
   const wantOpt = prefGet("live.optimal", false);
   const pills = all.map((p) => `
@@ -251,15 +251,27 @@ function renderPosBar(all, showOptimal) {
     <label class="opt ${wantOpt ? "" : "off"}" title="Best lineup possible from points already scored">
       <input type="checkbox" id="optToggle" ${wantOpt ? "checked" : ""}> Optimal
     </label>` : "";
-  $("posBar").innerHTML = pills + optPill;
+  const wantBig = prefGet("live.bigplays", true);
+  const bigPill = showBig ? `
+    <label class="opt ${wantBig ? "" : "off"}" title="Touchdowns, 20+ yard plays and turnovers from around the league">
+      <input type="checkbox" id="bigToggle" ${wantBig ? "checked" : ""}> Big plays
+    </label>` : "";
+  $("posBar").innerHTML = pills + optPill + bigPill;
 
   $("posBar").querySelectorAll("input[data-pos]").forEach((cb) => cb.addEventListener("change", () => {
     const hidden = [...$("posBar").querySelectorAll("input[data-pos]")].filter((x) => !x.checked).map((x) => x.value);
     const keep = (prefGet("live.hidden", null) || LIVE_DEFAULT_OFF).filter((p) => !all.includes(p));
     prefSet("live.hidden", [...new Set([...keep, ...hidden])]);
-    renderPosBar(all, showOptimal);
+    renderPosBar(all, showOptimal, showBig);
     renderBoard();
   }));
+  const big = $("bigToggle");
+  if (big) big.addEventListener("change", async () => {
+    prefSet("live.bigplays", big.checked);
+    renderPosBar(all, showOptimal, showBig);
+    if (big.checked) await loadBigPlays();
+    renderBoard();
+  });
   const opt = $("optToggle");
   if (opt) opt.addEventListener("change", () => { prefSet("live.optimal", opt.checked); loadLive(); });
 }
@@ -293,10 +305,49 @@ function optimalCard() {
   </div>`;
 }
 
+// Big plays: every touchdown, 20+ yard play from scrimmage and turnover in the week's games
+// (or the chosen slate's), newest first. Final games' logs are cached in finalPlays.
+let bigPlays = null, bigTicket = 0;
+const bigOn = () => !!liveData && !liveData.season_mode && !!liveEspn && prefGet("live.bigplays", true);
+
+async function loadBigPlays() {
+  const ticket = ++bigTicket;
+  const slate = (liveData.slates || []).find((x) => x.key === liveData.slate);
+  const teams = slate && slate.teams ? new Set(slate.teams) : null;
+  const games = liveEspn.games.filter((g) => g.state !== "pre" && (!teams || teams.has(g.away) || teams.has(g.home)));
+  const out = [];
+  await Promise.all(games.map(async (g) => {
+    try {
+      const d = finalPlays[g.id] || await espnGameDetail(g.id, g.start);
+      if (g.state === "post") finalPlays[g.id] = d;
+      d.plays.forEach((p) => {
+        if (p.td || p.turnover || p.big) out.push({ ...p, game: `${g.away} @ ${g.home}`, kind: p.td ? "TD" : p.turnover ? "TO" : "20+" });
+      });
+    } catch { /* one game failing shouldn't blank the section */ }
+  }));
+  if (ticket !== bigTicket) return;
+  out.sort((a, b) => String(b.wall).localeCompare(String(a.wall)));
+  bigPlays = { plays: out, games: games.length };
+}
+
+function bigPlaysCard() {
+  if (!bigOn() || !bigPlays) return "";
+  const rows = bigPlays.plays.map((p) => `<div class="play tc hl"${p.color ? ` style="--tc:${esc(p.color)}"` : ""}>
+      <span class="pclock">${p.period ? `${p.period > 4 ? "OT" : `Q${p.period}`} ` : ""}${esc(p.clock || "")}</span>
+      <span class="ptm">${esc(p.team || "")}</span>
+      <span><span class="bpkind ${p.kind === "TD" ? "td" : p.kind === "TO" ? "to" : ""}">${p.kind}</span> <span class="muted">${esc(p.game)}</span> ${esc(p.text || "")}</span>
+    </div>`).join("");
+  return `<div class="card plays bigplays">
+    <div class="head"><span class="title">Big plays</span>
+      <span class="stat">${bigPlays.plays.length} across ${bigPlays.games} game${bigPlays.games === 1 ? "" : "s"} · touchdowns, 20+ yards, turnovers</span></div>
+    ${rows ? `<div class="playlist all">${rows}</div>` : `<div class="empty" style="padding:18px">No big plays yet.</div>`}
+  </div>`;
+}
+
 function renderBoard() {
   if (!liveData) return;
   const show = visiblePositions(liveData.positions);
-  const optCard = wantOptimal() && liveData.scoring === "dk" ? optimalCard() : "";
+  const optCard = (wantOptimal() && liveData.scoring === "dk" ? optimalCard() : "") + bigPlaysCard();
   if (!show.length) {
     $("liveBoard").innerHTML = optCard || `<div class="empty">No positions selected.</div>`;
     return;
@@ -413,11 +464,13 @@ async function loadLive() {
       $("liveWeek").value = r.week;
     }
     liveSeason = r.season; liveWeekNow = r.current_week;
-    const posSig = r.positions.join("|") + (r.salaries ? "+s" : "");
+    const showBig = !seasonMode && !!liveEspn;
+    const posSig = r.positions.join("|") + (r.salaries ? "+s" : "") + (showBig ? "+b" : "");
     if ($("posBar").dataset.sig !== posSig) {
       $("posBar").dataset.sig = posSig;
-      renderPosBar(r.positions, !!r.salaries);
+      renderPosBar(r.positions, !!r.salaries, showBig);
     }
+    if (bigOn()) await loadBigPlays(); else bigPlays = null;
 
     const slateOpts = r.slates || [];
     $("liveSlateWrap").classList.toggle("hidden", !slateOpts.length || r.scoring !== "dk");
