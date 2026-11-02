@@ -334,7 +334,8 @@ function bigPlaysCard() {
   if (!bigOn() || !bigPlays) return "";
   const rows = bigPlays.plays.map((p) => `<div class="play tc hl"${p.color ? ` style="--tc:${esc(p.color)}"` : ""}>
       <span class="pclock">${p.period ? `${p.period > 4 ? "OT" : `Q${p.period}`} ` : ""}${esc(p.clock || "")}</span>
-      <span class="ptm">${esc(p.team || "")}</span>
+      <span class="bpwho">${p.atm ? `<img class="bplogo" src="${esc(LOGO(p.atm))}" alt="${esc(p.atm)}" title="${esc(p.atm)}">` : ""}${
+        p.actor && p.actor.img ? `<img class="bpface" src="${esc(p.actor.img)}" alt="" title="${esc(p.actor.name)}" onerror="this.style.visibility='hidden'">` : `<span class="bpface"></span>`}</span>
       <span><span class="bpkind ${p.kind === "TD" ? "td" : p.kind === "TO" ? "to" : ""}">${p.kind}</span> <span class="muted">${esc(p.game)}</span> ${esc(p.text || "")}</span>
     </div>`).join("");
   return `<div class="card plays bigplays">

@@ -182,6 +182,24 @@ function isTurnover(p) {
   return /\bRECOVERED by\b/.test(text);
 }
 
+// Who made a TD / takeaway play, from ESPN's play text ("J.Allen pass ... to S.Diggs ... TOUCHDOWN",
+// "INTERCEPTED by B.Washington", "RECOVERED by BUF-K.Elarms-Orr"): the first or second "I.Last" token by play kind
+const NAME_TOK = "([A-Z][a-z]{0,3}\\.[A-Za-z'’\\-]+)";
+function actorToken(p, turnover) {
+  // "X reported in as eligible." names a player who isn't the one who scored
+  const text = String(p.text || "").split("REVERSED.").pop()
+    .replace(new RegExp(NAME_TOK + " reported in as eligible\\.", "g"), "");
+  let m;
+  if (turnover) {
+    m = text.match(new RegExp("INTERCEPTED by " + NAME_TOK)) || text.match(new RegExp("RECOVERED by [A-Z]{2,3}-" + NAME_TOK));
+  } else if (/\bpass\b/i.test(text)) {
+    m = text.match(new RegExp(" to " + NAME_TOK));
+  }
+  m = m || text.match(new RegExp("^\\s*(?:\\([^)]*\\)\\s*)*" + NAME_TOK));
+  return m ? m[1] : "";
+}
+const rosterKey = (first, last) => normName(`${String(first || "")[0] || ""}.${last || ""}`).replace(/\./g, "") ;
+
 async function espnGameDetail(gameId, startIso) {
   const data = await espnJson(`${ESPN_SUM}?event=${gameId}`);
   const drives = data.drives || {};
@@ -196,6 +214,16 @@ async function espnGameDetail(gameId, startIso) {
     if (c.team?.id) colors[String(c.team.id)] = playColor(c.team);
   });
 
+  // players in the box score, by team and "initial + last name" (the play text's form), with ESPN's headshot
+  const roster = {};
+  (data.boxscore?.players || []).forEach((t) => {
+    const ab = fixTeam(t.team?.abbreviation);
+    (t.statistics || []).forEach((st) => (st.athletes || []).forEach((x) => {
+      const a = x.athlete || {};
+      if (!a.id) return;
+      roster[`${ab}|${rosterKey(a.firstName, a.lastName)}`] = { name: a.displayName, img: a.headshot?.href || "" };
+    }));
+  });
   const seen = new Set(), plays = [];
   all.forEach((d) => (d.plays || []).forEach((p) => {
     const id = p.id || JSON.stringify(p).slice(0, 40);
@@ -208,12 +236,17 @@ async function espnGameDetail(gameId, startIso) {
     const big = !turnover && Number(p.statYardage) >= BIG_PLAY_YDS && !NOT_FROM_SCRIMMAGE.test(p.type?.text || "");
     // a turnover belongs to the team that took the ball away
     const colorOf = turnover ? String(p.end?.team?.id || "") : offense;
+    const td = !!p.scoringPlay && /touchdown/i.test(String(p.text || "").split("REVERSED.").pop());
+    const actorTeam = turnover ? (byId[String(p.end?.team?.id || "")] || byId[offense] || "") : (byId[offense] || "");
+    const tok = (td || turnover) ? actorToken(p, turnover) : "";
+    const who = tok ? roster[`${actorTeam}|${rosterKey(tok[0], tok.slice(tok.indexOf(".") + 1))}`] : null;
     return {
+      actor: who || null, atm: actorTeam,
       clock: p.clock?.displayValue || "", period: p.period?.number,
       text: p.text || "", team: byId[offense] || "",
       down: p.start?.shortDownDistanceText || "", spot: p.start?.possessionText || "",
       scoring: !!p.scoringPlay, turnover, big,
-      td: !!p.scoringPlay && /touchdown/i.test(String(p.text || "").split("REVERSED.").pop()),
+      td,
       wall: p.wallclock || "",
       color: colors[colorOf] || colors[offense] || "",
     };
